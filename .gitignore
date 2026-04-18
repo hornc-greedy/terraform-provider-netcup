@@ -1,0 +1,26 @@
+# Binaries
+terraform-provider-netcup
+*.exe
+
+# Local terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+
+# Local secrets / overrides
+*.tfvars
+!*.tfvars.example
+.env
+
+# Go
+vendor/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# GoReleaser
+dist/
