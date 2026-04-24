@@ -70,6 +70,15 @@ func (c *Client) do(ctx context.Context, action string, param any) (json.RawMess
 		return nil, fmt.Errorf("decode %s response: %w", action, err)
 	}
 
+	if env.Status != "success" {
+		return nil, &APIError{
+			Action:       action,
+			Status:       env.Status,
+			StatusCode:   env.StatusCode,
+			ShortMessage: env.ShortMessage,
+			LongMessage:  env.LongMessage,
+		}
+	}
 	return env.ResponseData, nil
 }
 
