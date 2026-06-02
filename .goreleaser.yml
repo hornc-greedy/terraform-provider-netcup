@@ -54,6 +54,11 @@ signs:
 
 release:
   draft: false
+  # The Terraform Registry reads the protocol version from this manifest; it must
+  # be uploaded alongside the binaries or the provider falls back to protocol 5.0.
+  extra_files:
+    - glob: "terraform-registry-manifest.json"
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
 
 changelog:
   disable: true
