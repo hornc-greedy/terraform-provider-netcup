@@ -99,11 +99,14 @@ The refresh token stays valid as long as it is used at least once every 30 days.
 ### Import
 
 ```bash
-terraform import netcup_dns_record.www      example.com:123456789
-terraform import netcup_dns_zone.example    example.com
-terraform import netcup_reverse_dns.mail    203.0.113.10
-terraform import netcup_ssh_key.deploy      42
-terraform import netcup_firewall_policy.web 174780
+terraform import netcup_dns_record.www            example.com:123456789
+terraform import netcup_dns_zone.example          example.com
+terraform import netcup_reverse_dns.mail          203.0.113.10
+terraform import netcup_ssh_key.deploy            42
+terraform import netcup_firewall_policy.web       174780
+terraform import netcup_server_snapshot.daily     296155/daily
+terraform import netcup_server_firewall.srv       296155/ba:ad:7a:1f:d3:68
+terraform import netcup_failover_ip_route.primary v4/1234
 ```
 
 ## Developing the Provider
@@ -121,6 +124,15 @@ Linting uses [golangci-lint](https://golangci-lint.run/) (config in
 
 ```shell
 golangci-lint run ./...
+```
+
+The per-resource docs under `docs/` (published to the Terraform Registry) are
+generated from the schema descriptions and the files in `examples/` with
+[tfplugindocs](https://github.com/hashicorp/terraform-plugin-docs); regenerate
+them after changing a schema or an example:
+
+```shell
+go generate ./...   # or: make generate
 ```
 
 Acceptance tests create **real** resources and are gated behind `TF_ACC=1` and
