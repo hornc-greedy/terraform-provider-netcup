@@ -5,7 +5,20 @@ package scp
 import (
 	"context"
 	"strconv"
+	"time"
 )
+
+// normalizeTimestamp canonicalises an RFC3339 timestamp to microsecond
+// precision. The create endpoint returns nanoseconds while the list endpoint
+// rounds to microseconds; normalising both keeps create, read and import in
+// sync. Unparseable input is returned unchanged.
+func normalizeTimestamp(s string) string {
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return s
+	}
+	return t.Round(time.Microsecond).Format(time.RFC3339Nano)
+}
 
 // SSHKey is an SSH public key stored in the SCP account.
 type SSHKey struct {
@@ -24,6 +37,9 @@ func (c *Client) ListSSHKeys(ctx context.Context) ([]SSHKey, error) {
 	var out []SSHKey
 	if err := c.do(ctx, "GET", "/users/"+strconv.Itoa(uid)+"/ssh-keys", nil, &out); err != nil {
 		return nil, err
+	}
+	for i := range out {
+		out[i].CreatedAt = normalizeTimestamp(out[i].CreatedAt)
 	}
 	return out, nil
 }
@@ -52,6 +68,7 @@ func (c *Client) CreateSSHKey(ctx context.Context, name, key string) (*SSHKey, e
 	if err := c.do(ctx, "POST", "/users/"+strconv.Itoa(uid)+"/ssh-keys", SSHKey{Name: name, Key: key}, &out); err != nil {
 		return nil, err
 	}
+	out.CreatedAt = normalizeTimestamp(out.CreatedAt)
 	return &out, nil
 }
 

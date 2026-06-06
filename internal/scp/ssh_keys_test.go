@@ -68,4 +68,21 @@ func TestGetSSHKeyMissing(t *testing.T) {
 	}
 }
 
+// TestNormalizeTimestamp pins the fix for the create/list precision mismatch:
+// the create endpoint returns nanoseconds, the list endpoint microseconds, and
+// both must canonicalise to the same value.
+func TestNormalizeTimestamp(t *testing.T) {
+	create := normalizeTimestamp("2026-06-06T12:15:31.582052720Z")
+	list := normalizeTimestamp("2026-06-06T12:15:31.582053Z")
+	if create != list {
+		t.Fatalf("create %q != list %q", create, list)
+	}
+	if create != "2026-06-06T12:15:31.582053Z" {
+		t.Fatalf("got %q, want microsecond precision", create)
+	}
+	if got := normalizeTimestamp("not-a-time"); got != "not-a-time" {
+		t.Fatalf("unparseable input should pass through, got %q", got)
+	}
+}
+
 // firewall + maintenance tests live in firewall_test.go.
