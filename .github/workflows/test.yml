@@ -34,6 +34,6 @@ jobs:
       - name: gofmt
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       # golangci-lint v2 config (version: "2") requires golangci-lint-action v7+.
-      - uses: golangci/golangci-lint-action@v7
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
