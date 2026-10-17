@@ -34,7 +34,7 @@ provider "netcup" {
 
 ### Optional
 
-- `api_key` (String) netcup CCP API key. May also be set via `NETCUP_API_KEY`.
+- `api_key` (String, Sensitive) netcup CCP API key. May also be set via `NETCUP_API_KEY`.
 - `api_password` (String, Sensitive) netcup CCP API password. May also be set via `NETCUP_API_PASSWORD`.
 - `customer_number` (String) netcup customer number (CCP API). May also be set via `NETCUP_CUSTOMER_NUMBER`.
 - `scp_refresh_token` (String, Sensitive) SCP REST API offline refresh token (obtained once via the OIDC device flow). Required only for SCP resources/data sources (reverse DNS, servers). May also be set via `NETCUP_SCP_REFRESH_TOKEN`.

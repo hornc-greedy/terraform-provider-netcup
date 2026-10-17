@@ -62,6 +62,7 @@ func (p *netcupProvider) Schema(_ context.Context, _ fwprov.SchemaRequest, resp 
 			},
 			"api_key": provschema.StringAttribute{
 				Optional:            true,
+				Sensitive:           true,
 				MarkdownDescription: "netcup CCP API key. May also be set via `NETCUP_API_KEY`.",
 			},
 			"api_password": provschema.StringAttribute{

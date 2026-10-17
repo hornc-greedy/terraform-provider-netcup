@@ -6,6 +6,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The provider attribute `api_key` is marked sensitive, so Terraform redacts it
+  in its output like `api_password` and `scp_refresh_token`. Existing
+  configurations need no changes.
+
 ### Deprecated
 
 - `netcup_maintenance` data source. netcup removes the underlying SCP endpoint
