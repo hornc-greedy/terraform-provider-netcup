@@ -17,6 +17,9 @@ var (
 	_ datasource.DataSourceWithConfigure = (*maintenanceDataSource)(nil)
 )
 
+const maintenanceDeprecation = "netcup removes the underlying SCP endpoint GET /api/v1/maintenance by 31.12.2026. " +
+	"This data source will be removed in the next major version."
+
 type maintenanceDataSource struct {
 	client *scp.Client
 }
@@ -37,7 +40,9 @@ func (d *maintenanceDataSource) Metadata(_ context.Context, req datasource.Metad
 
 func (d *maintenanceDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Scheduled SCP system maintenance window, if any (SCP REST API).",
+		MarkdownDescription: "Scheduled SCP system maintenance window, if any (SCP REST API).\n\n" +
+			"~> **Deprecated:** " + maintenanceDeprecation,
+		DeprecationMessage: maintenanceDeprecation,
 		Attributes: map[string]schema.Attribute{
 			"start_at":  schema.StringAttribute{Computed: true, MarkdownDescription: "Maintenance start (empty if none scheduled)."},
 			"finish_at": schema.StringAttribute{Computed: true, MarkdownDescription: "Maintenance finish (empty if none scheduled)."},

@@ -4,11 +4,14 @@ page_title: "netcup_maintenance Data Source - netcup"
 subcategory: ""
 description: |-
   Scheduled SCP system maintenance window, if any (SCP REST API).
+  ~> Deprecated: netcup removes the underlying SCP endpoint GET /api/v1/maintenance by 31.12.2026. This data source will be removed in the next major version.
 ---
 
 # netcup_maintenance (Data Source)
 
 Scheduled SCP system maintenance window, if any (SCP REST API).
+
+~> **Deprecated:** netcup removes the underlying SCP endpoint GET /api/v1/maintenance by 31.12.2026. This data source will be removed in the next major version.
 
 ## Example Usage
 

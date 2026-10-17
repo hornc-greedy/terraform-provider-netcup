@@ -76,7 +76,7 @@ Full documentation for every resource and data source is published on the
 | SSH keys (SCP) | `netcup_ssh_key`, `netcup_ssh_keys` |
 | Firewall (SCP) | `netcup_firewall_policy`, `netcup_firewall_policies`, `netcup_server_firewall` |
 | Snapshots / failover (SCP) | `netcup_server_snapshot`, `netcup_failover_ip_route`, `netcup_failover_ips` |
-| Misc (SCP) | `netcup_maintenance` |
+| Misc (SCP) | `netcup_maintenance` (deprecated, removed in 2.0.0) |
 
 ### SCP refresh token
 
