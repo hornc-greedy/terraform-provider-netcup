@@ -4,6 +4,7 @@ package scp
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 )
 
@@ -33,4 +34,27 @@ func (c *Client) GetInterfaces(ctx context.Context, serverID int) ([]Interface, 
 		return nil, err
 	}
 	return out, nil
+}
+
+// GetServerLive is GetServer for callers that need LiveInfo. It fails when
+// netcup cannot report the live info.
+func (c *Client) GetServerLive(ctx context.Context, id int) (*Server, error) {
+	s, err := c.GetServer(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if s.LiveInfo == nil {
+		return nil, fmt.Errorf("netcup reports no live info for server %d", id)
+	}
+	return s, nil
+}
+
+// PatchServer applies one server attribute, e.g. {"nickname": "web"}, and waits
+// for the task when netcup runs the change asynchronously.
+func (c *Client) PatchServer(ctx context.Context, id int, patch any) error {
+	var task TaskInfo
+	if err := c.send(ctx, "PATCH", "/servers/"+strconv.Itoa(id), "application/merge-patch+json", patch, &task); err != nil {
+		return err
+	}
+	return c.waitForTask(ctx, task.UUID)
 }

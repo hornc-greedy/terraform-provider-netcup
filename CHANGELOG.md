@@ -6,6 +6,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `netcup_server_settings` resource for hostname, nickname, autostart, UEFI,
+  boot order, OS optimization, CPU topology, keyboard layout, backup time and
+  power state of an existing server.
+
 ### Changed
 
 - The provider attribute `api_key` is marked sensitive, so Terraform redacts it

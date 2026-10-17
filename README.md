@@ -12,7 +12,7 @@ It manages two independent netcup APIs:
 
 - **CCP / DomainWebservice** (JSON) — DNS records and zones
 - **SCP REST API** (OAuth 2.0) — reverse DNS, SSH keys, firewall policies,
-  snapshots and failover routing for your servers
+  snapshots, failover routing and server settings for your servers
 
 ## Requirements
 
@@ -72,7 +72,7 @@ Full documentation for every resource and data source is published on the
 |---|---|
 | DNS (CCP) | `netcup_dns_record`, `netcup_dns_zone`, `netcup_dns_records` |
 | Reverse DNS (SCP) | `netcup_reverse_dns` |
-| Servers (SCP) | `netcup_servers`, `netcup_server`, `netcup_server_interfaces` |
+| Servers (SCP) | `netcup_server_settings`, `netcup_servers`, `netcup_server`, `netcup_server_interfaces` |
 | SSH keys (SCP) | `netcup_ssh_key`, `netcup_ssh_keys` |
 | Firewall (SCP) | `netcup_firewall_policy`, `netcup_firewall_policies`, `netcup_server_firewall` |
 | Snapshots / failover (SCP) | `netcup_server_snapshot`, `netcup_failover_ip_route`, `netcup_failover_ips` |
@@ -107,6 +107,7 @@ terraform import netcup_firewall_policy.web       174780
 terraform import netcup_server_snapshot.daily     296155/daily
 terraform import netcup_server_firewall.srv       296155/ba:ad:7a:1f:d3:68
 terraform import netcup_failover_ip_route.primary v4/1234
+terraform import netcup_server_settings.web       296155
 ```
 
 ## Developing the Provider
@@ -148,7 +149,7 @@ unless their variables are set:
 
 | Variable | Tests | Effect on the server |
 |---|---|---|
-| `NETCUP_TEST_SERVER_ID` | snapshot, server firewall | offline snapshot of `vda` restarts the server, firewall of the first interface is cleared |
+| `NETCUP_TEST_SERVER_ID` | snapshot, server firewall, server settings | offline snapshot of `vda` restarts the server, firewall of the first interface is cleared, nickname and autostart are set |
 | `NETCUP_TEST_RDNS_IP` | reverse DNS (with `NETCUP_TEST_DOMAIN`) | PTR is deleted afterwards |
 | `NETCUP_TEST_FAILOVER_IP_ID` | failover route (with `NETCUP_TEST_SERVER_ID`) | IPv4 failover IP stays routed to that server |
 
@@ -183,6 +184,9 @@ provider_installation {
   and needs `disk_name`
 - netcup cannot unroute a failover IP, so `destroy` of
   `netcup_failover_ip_route` keeps its current routing
+- `netcup_server_settings` manages only the attributes you set on an
+  **existing** server and never creates or deletes it (`destroy` only drops
+  it from state)
 
 ## License
 
