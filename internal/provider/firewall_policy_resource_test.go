@@ -3,16 +3,22 @@
 package provider
 
 import (
+	"context"
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
+
+	"github.com/hornc-greedy/terraform-provider-netcup/internal/scp"
 )
 
 func TestAccFirewallPolicyResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheckSCP(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckFirewallPolicyDestroy,
 		Steps: []resource.TestStep{
 			{ // create
 				Config: testAccFirewallPolicyConfig("tf-acc-test", "web ingress"),
@@ -34,6 +40,27 @@ func TestAccFirewallPolicyResource(t *testing.T) {
 			},
 		},
 	})
+}
+
+func testAccCheckFirewallPolicyDestroy(s *terraform.State) error {
+	c := testAccSCPClient()
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "netcup_firewall_policy" {
+			continue
+		}
+		id, err := strconv.Atoi(rs.Primary.ID)
+		if err != nil {
+			return err
+		}
+		_, err = c.GetFirewallPolicy(context.Background(), id)
+		if err == nil {
+			return fmt.Errorf("firewall policy %d still exists", id)
+		}
+		if !scp.IsNotFound(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 func testAccFirewallPolicyConfig(name, ruleDesc string) string {
