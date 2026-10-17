@@ -172,6 +172,8 @@ provider_installation {
   they are intentionally not implemented
 - An **offline snapshot** (`online = false`, the default) restarts the server
   and needs `disk_name`
+- netcup cannot unroute a failover IP, so `destroy` of
+  `netcup_failover_ip_route` keeps its current routing
 
 ## License
 
