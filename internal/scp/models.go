@@ -15,6 +15,22 @@ type Server struct {
 	MaxCPUCount        int    `json:"maxCpuCount"`
 	SnapshotCount      int    `json:"snapshotCount"`
 	RescueSystemActive bool   `json:"rescueSystemActive"`
+
+	LiveInfo *ServerLiveInfo `json:"serverLiveInfo"`
+}
+
+// ServerLiveInfo is the subset of the detail endpoint's serverLiveInfo the
+// provider reads. netcup returns null when the node cannot report it.
+type ServerLiveInfo struct {
+	State          string   `json:"state"`
+	Autostart      bool     `json:"autostart"`
+	UEFI           bool     `json:"uefi"`
+	Bootorder      []string `json:"bootorder"`
+	OSOptimization string   `json:"osOptimization"`
+	Sockets        int      `json:"sockets"`
+	CoresPerSocket int      `json:"coresPerSocket"`
+	KeyboardLayout string   `json:"keyboardLayout"`
+	BackupTime     string   `json:"backupTime"`
 }
 
 // IPv4Address mirrors an entry of an interface's ipv4Addresses. Its rDNS is a

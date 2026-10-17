@@ -114,10 +114,14 @@ func (c *Client) ensureToken(ctx context.Context) (string, error) {
 	return c.accessToken, nil
 }
 
-// do performs an authenticated request. body may be nil. On success it returns
-// the raw response body (which may be empty for 204). out, if non-nil, is JSON
-// decoded from the body when there is one.
+// do performs an authenticated request with a JSON body. body may be nil. out,
+// if non-nil, is JSON decoded from the response body when there is one.
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
+	return c.send(ctx, method, path, "application/json", body, out)
+}
+
+// send is do with an explicit request content type.
+func (c *Client) send(ctx context.Context, method, path, contentType string, body, out any) error {
 	token, err := c.ensureToken(ctx)
 	if err != nil {
 		return err
@@ -139,7 +143,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", contentType)
 	}
 
 	res, err := c.HTTPClient.Do(req)
