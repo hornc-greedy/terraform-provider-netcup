@@ -161,3 +161,14 @@ func TestAPIErrorParsed(t *testing.T) {
 		t.Fatalf("unexpected: %+v", apiErr)
 	}
 }
+
+func TestAPIErrorFieldErrors(t *testing.T) {
+	c := newTestClient(t, func(method, path string, _ []byte) (int, string) {
+		return 422, `{"code":null,"message":"Validation failed","errors":[{"field":null,"message":"Disk name cannot be blank"},{"field":"name","message":"must not be blank"}]}`
+	})
+	_, err := c.GetReverseDNS(context.Background(), "203.0.113.10")
+	want := "scp api error (http 422): Validation failed; Disk name cannot be blank; name: must not be blank"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %s", err, want)
+	}
+}

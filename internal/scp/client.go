@@ -157,10 +157,22 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		var parsed struct {
 			Code    string `json:"code"`
 			Message string `json:"message"`
+			Errors  []struct {
+				Field   string `json:"field"`
+				Message string `json:"message"`
+			} `json:"errors"`
 		}
 		if json.Unmarshal(raw, &parsed) == nil {
 			apiErr.Code = parsed.Code
 			apiErr.Message = parsed.Message
+			// A ValidationError names the offending fields only in errors.
+			for _, fe := range parsed.Errors {
+				detail := fe.Message
+				if fe.Field != "" {
+					detail = fe.Field + ": " + detail
+				}
+				apiErr.Message += "; " + detail
+			}
 		}
 		if apiErr.Message == "" {
 			apiErr.Message = strings.TrimSpace(string(raw))
