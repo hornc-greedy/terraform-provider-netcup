@@ -17,6 +17,7 @@ resource "netcup_server_snapshot" "daily" {
   server_id   = 296155
   name        = "daily"
   description = "Managed by Terraform"
+  disk_name   = "vda"
 }
 ```
 
@@ -31,7 +32,8 @@ resource "netcup_server_snapshot" "daily" {
 ### Optional
 
 - `description` (String) Snapshot description.
-- `online` (Boolean) Whether to take an online snapshot. Defaults to `false`.
+- `disk_name` (String) Disk to snapshot, e.g. `vda`. Required unless `online` is `true`, and not allowed with it.
+- `online` (Boolean) Whether to take an online snapshot. Defaults to `false`. An offline snapshot restarts the server.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only

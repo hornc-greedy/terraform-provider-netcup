@@ -170,6 +170,8 @@ provider_installation {
 - **Domain registration and contacts** require netcup's reseller-only CCP
   methods, which return `4020 Function not available` on a standard account, so
   they are intentionally not implemented
+- An **offline snapshot** (`online = false`, the default) restarts the server
+  and needs `disk_name`
 
 ## License
 
