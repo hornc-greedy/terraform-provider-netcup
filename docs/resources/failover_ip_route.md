@@ -32,7 +32,7 @@ resource "netcup_failover_ip_route" "primary" {
 
 ### Optional
 
-- `ipv6` (Boolean) Set to true for an IPv6 failover. Defaults to false.
+- `ipv6` (Boolean) Set to true for an IPv6 failover. Defaults to `false`.
 
 ### Read-Only
 
