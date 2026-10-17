@@ -15,7 +15,8 @@ Manage netcup DNS and domains via the CCP (DomainWebservice) API, and reverse DN
 terraform {
   required_providers {
     netcup = {
-      source = "hornc-greedy/netcup"
+      source  = "hornc-greedy/netcup"
+      version = "~> 1.1"
     }
   }
 }
