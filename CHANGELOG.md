@@ -4,6 +4,14 @@ All notable changes to this provider are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Deprecated
+
+- `netcup_maintenance` data source. netcup removes the underlying SCP endpoint
+  `GET /api/v1/maintenance` by 31.12.2026. The data source will be removed in
+  the next major version.
+
 ## [1.0.0] - 2026-06-06
 
 ### Added
@@ -22,4 +30,5 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `netcup_failover_ip_route` resources, `netcup_failover_ips` data source.
 - **Maintenance (SCP API):** `netcup_maintenance` data source.
 
+[Unreleased]: https://github.com/hornc-greedy/terraform-provider-netcup/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/hornc-greedy/terraform-provider-netcup/releases/tag/v1.0.0
