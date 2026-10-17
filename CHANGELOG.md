@@ -18,6 +18,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `GET /api/v1/maintenance` by 31.12.2026. The data source will be removed in
   the next major version.
 
+### Fixed
+
+- `netcup_failover_ip_route` without `ipv6` failed after apply with "Provider
+  returned invalid result object after apply". `ipv6` now defaults to `false`.
+  Existing state keeps its resources without replacement.
+
 ## [1.0.0] - 2026-06-06
 
 ### Added
