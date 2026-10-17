@@ -23,6 +23,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `netcup_failover_ip_route` without `ipv6` failed after apply with "Provider
   returned invalid result object after apply". `ipv6` now defaults to `false`.
   Existing state keeps its resources without replacement.
+- `netcup_server_snapshot` with the default `online = false` failed with
+  "Validation failed" because netcup requires a disk for offline snapshots. The
+  new `disk_name` attribute selects it and is validated at plan time. If you
+  imported an offline snapshot, add its disk, e.g. `disk_name = "vda"`, to the
+  configuration before upgrading. Online
+  snapshots are unchanged. The docs now state that an offline snapshot restarts
+  the server.
 
 ## [1.0.0] - 2026-06-06
 

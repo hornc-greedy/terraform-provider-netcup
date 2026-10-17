@@ -21,9 +21,10 @@ import (
 )
 
 var (
-	_ resource.Resource                = (*serverSnapshotResource)(nil)
-	_ resource.ResourceWithConfigure   = (*serverSnapshotResource)(nil)
-	_ resource.ResourceWithImportState = (*serverSnapshotResource)(nil)
+	_ resource.Resource                   = (*serverSnapshotResource)(nil)
+	_ resource.ResourceWithConfigure      = (*serverSnapshotResource)(nil)
+	_ resource.ResourceWithImportState    = (*serverSnapshotResource)(nil)
+	_ resource.ResourceWithValidateConfig = (*serverSnapshotResource)(nil)
 )
 
 type serverSnapshotResource struct {
@@ -40,6 +41,7 @@ type serverSnapshotModel struct {
 	ServerID    types.Int64    `tfsdk:"server_id"`
 	Name        types.String   `tfsdk:"name"`
 	Description types.String   `tfsdk:"description"`
+	DiskName    types.String   `tfsdk:"disk_name"`
 	Online      types.Bool     `tfsdk:"online"`
 	State       types.String   `tfsdk:"state"`
 	Timeouts    timeouts.Value `tfsdk:"timeouts"`
@@ -73,11 +75,16 @@ func (r *serverSnapshotResource) Schema(ctx context.Context, _ resource.SchemaRe
 				MarkdownDescription: "Snapshot description.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
+			"disk_name": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "Disk to snapshot, e.g. `vda`. Required unless `online` is `true`, and not allowed with it.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+			},
 			"online": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
-				MarkdownDescription: "Whether to take an online snapshot. Defaults to `false`.",
+				MarkdownDescription: "Whether to take an online snapshot. Defaults to `false`. An offline snapshot restarts the server.",
 				PlanModifiers:       []planmodifier.Bool{boolRequiresReplace()},
 			},
 			"state": schema.StringAttribute{
@@ -89,6 +96,24 @@ func (r *serverSnapshotResource) Schema(ctx context.Context, _ resource.SchemaRe
 				Delete: true,
 			}),
 		},
+	}
+}
+
+// ValidateConfig enforces the API rule that an offline snapshot names its disk
+// and an online snapshot does not.
+func (r *serverSnapshotResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var cfg serverSnapshotModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfg)...)
+	if resp.Diagnostics.HasError() || cfg.Online.IsUnknown() || cfg.DiskName.IsUnknown() {
+		return
+	}
+	switch {
+	case cfg.Online.ValueBool() && !cfg.DiskName.IsNull():
+		resp.Diagnostics.AddAttributeError(path.Root("disk_name"), "disk_name not allowed",
+			"An online snapshot cannot select a disk. Remove disk_name or set online = false.")
+	case !cfg.Online.ValueBool() && cfg.DiskName.IsNull():
+		resp.Diagnostics.AddAttributeError(path.Root("disk_name"), "Missing disk_name",
+			`An offline snapshot needs disk_name, e.g. "vda". Set it or set online = true.`)
 	}
 }
 
@@ -114,7 +139,7 @@ func (r *serverSnapshotResource) Create(ctx context.Context, req resource.Create
 	ctx, cancel := context.WithTimeout(ctx, createTimeout)
 	defer cancel()
 	snap, err := r.client.CreateSnapshot(ctx, int(plan.ServerID.ValueInt64()),
-		plan.Name.ValueString(), plan.Description.ValueString(), "", plan.Online.ValueBool())
+		plan.Name.ValueString(), plan.Description.ValueString(), plan.DiskName.ValueString(), plan.Online.ValueBool())
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating snapshot", err.Error())
 		return
@@ -144,6 +169,10 @@ func (r *serverSnapshotResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 	state.Description = optString(snap.Description)
+	state.DiskName = types.StringNull()
+	if !snap.Online && len(snap.Disks) == 1 {
+		state.DiskName = types.StringValue(snap.Disks[0])
+	}
 	state.Online = types.BoolValue(snap.Online)
 	state.State = types.StringValue(snap.State)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
