@@ -30,6 +30,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   configuration before upgrading. Online
   snapshots are unchanged. The docs now state that an offline snapshot restarts
   the server.
+- SCP validation errors showed only "Validation failed". They now include the
+  reason netcup gives for each field.
 
 ## [1.0.0] - 2026-06-06
 
