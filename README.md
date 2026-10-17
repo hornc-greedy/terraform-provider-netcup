@@ -143,6 +143,15 @@ account or domain:
 TF_ACC=1 go test ./... -run TestAcc
 ```
 
+The CCP tests need `NETCUP_TEST_DOMAIN`. Tests that change a server are skipped
+unless their variables are set:
+
+| Variable | Tests | Effect on the server |
+|---|---|---|
+| `NETCUP_TEST_SERVER_ID` | snapshot, server firewall | offline snapshot of `vda` restarts the server, firewall of the first interface is cleared |
+| `NETCUP_TEST_RDNS_IP` | reverse DNS (with `NETCUP_TEST_DOMAIN`) | PTR is deleted afterwards |
+| `NETCUP_TEST_FAILOVER_IP_ID` | failover route (with `NETCUP_TEST_SERVER_ID`) | IPv4 failover IP stays routed to that server |
+
 To try the provider against the live API without releasing it, build a binary
 and point Terraform at it with a `dev_overrides` block in your CLI config
 (`~/.terraformrc`):

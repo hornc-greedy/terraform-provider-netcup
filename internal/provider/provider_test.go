@@ -10,6 +10,8 @@ import (
 	fwprov "github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+
+	"github.com/hornc-greedy/terraform-provider-netcup/internal/scp"
 )
 
 // testAccProtoV6ProviderFactories wires the in-process provider for acceptance
@@ -40,6 +42,22 @@ func testAccPreCheckSCP(t *testing.T) {
 	if os.Getenv("NETCUP_SCP_REFRESH_TOKEN") == "" {
 		t.Fatal("NETCUP_SCP_REFRESH_TOKEN must be set for SCP acceptance tests")
 	}
+}
+
+// testAccPreCheckEnv skips the test unless every given variable is set. It
+// gates tests that change a real server, so they only run on explicit opt-in.
+func testAccPreCheckEnv(t *testing.T, keys ...string) {
+	t.Helper()
+	for _, k := range keys {
+		if os.Getenv(k) == "" {
+			t.Skipf("%s not set", k)
+		}
+	}
+}
+
+// testAccSCPClient returns an SCP client for CheckDestroy functions.
+func testAccSCPClient() *scp.Client {
+	return scp.New(os.Getenv("NETCUP_SCP_REFRESH_TOKEN"))
 }
 
 // TestProvider is a fast smoke test (runs without TF_ACC): the provider
