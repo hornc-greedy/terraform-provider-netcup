@@ -3,7 +3,6 @@
 [![Release](https://img.shields.io/github/v/release/hornc-greedy/terraform-provider-netcup?sort=semver)](https://github.com/hornc-greedy/terraform-provider-netcup/releases)
 [![Terraform Registry](https://img.shields.io/badge/Terraform%20Registry-844FBA?logo=terraform&logoColor=white)](https://registry.terraform.io/providers/hornc-greedy/netcup/latest)
 [![Tests](https://github.com/hornc-greedy/terraform-provider-netcup/actions/workflows/test.yml/badge.svg)](https://github.com/hornc-greedy/terraform-provider-netcup/actions/workflows/test.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/hornc-greedy/terraform-provider-netcup)](https://goreportcard.com/report/github.com/hornc-greedy/terraform-provider-netcup)
 [![License: MPL-2.0](https://img.shields.io/github/license/hornc-greedy/terraform-provider-netcup)](LICENSE)
 
 A [Terraform](https://www.terraform.io) provider for [netcup](https://www.netcup.com/),
