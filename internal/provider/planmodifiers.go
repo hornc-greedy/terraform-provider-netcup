@@ -8,12 +8,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 )
 
-// int64RequiresReplace is a small helper to keep schemas terse.
 func int64RequiresReplace() planmodifier.Int64 {
 	return int64planmodifier.RequiresReplace()
 }
 
-// boolRequiresReplace is a small helper to keep schemas terse.
 func boolRequiresReplace() planmodifier.Bool {
 	return boolplanmodifier.RequiresReplace()
 }

@@ -34,7 +34,7 @@ type ServerLiveInfo struct {
 }
 
 // IPv4Address mirrors an entry of an interface's ipv4Addresses. Its rDNS is a
-// single hostname string, unlike IPv6 which carries a per-address map.
+// single hostname string, unlike IPv6 which has a per-address map.
 type IPv4Address struct {
 	ID           int    `json:"id"`
 	IP           string `json:"ip"`

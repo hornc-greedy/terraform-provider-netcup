@@ -143,7 +143,6 @@ func (r *dnsRecordResource) Read(ctx context.Context, req resource.ReadRequest, 
 			return
 		}
 	}
-	// Record gone upstream -> drop it so Terraform plans a recreate.
 	resp.State.RemoveResource(ctx)
 }
 

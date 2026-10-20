@@ -55,7 +55,7 @@ func New(refreshToken string) *Client {
 	}
 }
 
-// APIError carries a non-2xx SCP response.
+// APIError is a non-2xx SCP response.
 type APIError struct {
 	Status  int
 	Code    string

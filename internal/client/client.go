@@ -32,7 +32,7 @@ type Client struct {
 	zoneMu    sync.Map // domain -> *sync.Mutex
 }
 
-// New returns a Client with sane defaults.
+// New returns a Client for DefaultEndpoint with a 30 second HTTP timeout.
 func New(customerNumber, apiKey, apiPassword string) *Client {
 	return &Client{
 		CustomerNumber: customerNumber,

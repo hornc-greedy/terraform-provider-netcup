@@ -14,8 +14,9 @@ import (
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/scp"
 )
 
-// testAccProtoV6ProviderFactories wires the in-process provider for acceptance
-// tests. Credentials are taken from the NETCUP_* environment variables.
+// testAccProtoV6ProviderFactories provides the in-process provider for
+// acceptance tests. Credentials are taken from the NETCUP_* environment
+// variables.
 var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
 	"netcup": providerserver.NewProtocol6WithError(New("test")()),
 }

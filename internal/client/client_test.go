@@ -72,8 +72,8 @@ func TestInfoDNSRecords(t *testing.T) {
 	}
 }
 
-// TestErrorResponseIsString is the regression test for the crash that affects
-// other netcup providers: on error, responsedata is a string, not an object.
+// TestErrorResponseIsString proves that an error whose responsedata is a
+// string, not an object, ends in an *APIError.
 func TestErrorResponseIsString(t *testing.T) {
 	c := newTestClient(t, func(action string, _ []byte) string {
 		if action == "login" {

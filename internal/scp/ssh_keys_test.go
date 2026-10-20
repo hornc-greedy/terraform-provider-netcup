@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// userinfoTestClient wires a client whose userinfo endpoint also points at the
+// sshTestClient returns a client whose userinfo endpoint also points at the
 // test server, so UserID() resolves without hitting the real realm.
 func sshTestClient(t *testing.T, api func(method, path string, body []byte) (int, string)) *Client {
 	c := newTestClient(t, func(method, path string, body []byte) (int, string) {
@@ -68,9 +68,8 @@ func TestGetSSHKeyMissing(t *testing.T) {
 	}
 }
 
-// TestNormalizeTimestamp pins the fix for the create/list precision mismatch:
-// the create endpoint returns nanoseconds, the list endpoint microseconds, and
-// both must canonicalise to the same value.
+// TestNormalizeTimestamp proves that the nanoseconds of the create endpoint and
+// the microseconds of the list endpoint canonicalise to the same value.
 func TestNormalizeTimestamp(t *testing.T) {
 	create := normalizeTimestamp("2026-06-06T12:15:31.582052720Z")
 	list := normalizeTimestamp("2026-06-06T12:15:31.582053Z")
@@ -84,5 +83,3 @@ func TestNormalizeTimestamp(t *testing.T) {
 		t.Fatalf("unparseable input should pass through, got %q", got)
 	}
 }
-
-// firewall + maintenance tests live in firewall_test.go.

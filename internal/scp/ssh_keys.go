@@ -44,7 +44,7 @@ func (c *Client) ListSSHKeys(ctx context.Context) ([]SSHKey, error) {
 	return out, nil
 }
 
-// GetSSHKey returns one SSH key by id, or nil if it no longer exists.
+// GetSSHKey returns one SSH key by id, or nil if it does not exist.
 func (c *Client) GetSSHKey(ctx context.Context, id int) (*SSHKey, error) {
 	keys, err := c.ListSSHKeys(ctx)
 	if err != nil {

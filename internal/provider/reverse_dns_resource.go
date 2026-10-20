@@ -97,7 +97,6 @@ func (r *reverseDNSResource) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 	if hostname == "" {
-		// PTR cleared upstream -> drop from state.
 		resp.State.RemoveResource(ctx)
 		return
 	}

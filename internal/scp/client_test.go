@@ -12,8 +12,8 @@ import (
 	"testing"
 )
 
-// newTestClient wires a Client to an httptest server. The handler routes /token
-// for the OIDC exchange and everything else as API paths.
+// newTestClient returns a Client for an httptest server. The handler routes
+// /token for the OIDC exchange and everything else as API paths.
 func newTestClient(t *testing.T, api func(method, path string, body []byte) (int, string)) *Client {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
