@@ -56,6 +56,18 @@ func TestAddressListNullStaysNull(t *testing.T) {
 	}
 }
 
+func TestKeptString(t *testing.T) {
+	if got := keptString(types.StringValue(""), ""); got.IsNull() || got.ValueString() != "" {
+		t.Fatalf("empty string not kept: %v", got)
+	}
+	if got := keptString(types.StringNull(), ""); !got.IsNull() {
+		t.Fatalf("null not kept: %v", got)
+	}
+	if got := keptString(types.StringValue(""), "x"); got.ValueString() != "x" {
+		t.Fatalf("api value ignored: %v", got)
+	}
+}
+
 func TestRulesToModelWithoutPriorRule(t *testing.T) {
 	var diags diag.Diagnostics
 	got := rulesToModel(context.Background(), []scp.FirewallRule{{Sources: []string{"b", "a"}}}, nil, &diags)

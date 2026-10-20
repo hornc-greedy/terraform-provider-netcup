@@ -59,6 +59,14 @@ func addressList(ctx context.Context, prior types.List, in []string, diags *diag
 	return stringListValue(ctx, in, diags)
 }
 
+// keptString keeps a prior empty string, so a configured "" stays stable.
+func keptString(prior types.String, s string) types.String {
+	if s == "" && !prior.IsNull() && prior.ValueString() == "" {
+		return prior
+	}
+	return optString(s)
+}
+
 // optString maps an empty API string to a null attribute value, so optional
 // fields the user left unset do not show as "" drift.
 func optString(s string) types.String {
@@ -83,9 +91,9 @@ func rulesToModel(ctx context.Context, rules []scp.FirewallRule, prior []firewal
 			Direction:        types.StringValue(r.Direction),
 			Sources:          addressList(ctx, priorRule.Sources, r.Sources, diags),
 			Destinations:     addressList(ctx, priorRule.Destinations, r.Destinations, diags),
-			SourcePorts:      optString(r.SourcePorts),
-			DestinationPorts: optString(r.DestinationPorts),
-			Description:      optString(r.Description),
+			SourcePorts:      keptString(priorRule.SourcePorts, r.SourcePorts),
+			DestinationPorts: keptString(priorRule.DestinationPorts, r.DestinationPorts),
+			Description:      keptString(priorRule.Description, r.Description),
 		})
 	}
 	return out
