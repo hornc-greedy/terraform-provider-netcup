@@ -1,7 +1,7 @@
 # Manage selected settings of an existing server. Attributes left out keep
 # their current value.
 resource "netcup_server_settings" "web" {
-  server_id   = 296155
+  server_id   = 12345
   hostname    = "web01.example.com"
   nickname    = "web01"
   autostart   = true

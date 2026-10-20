@@ -20,7 +20,7 @@ resource "netcup_reverse_dns" "mail_v4" {
 }
 
 resource "netcup_reverse_dns" "mail_v6" {
-  ip       = "2a03:4000:47:584::1"
+  ip       = "2001:db8::1"
   hostname = "mail.example.com"
 }
 ```

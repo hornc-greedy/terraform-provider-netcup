@@ -10,8 +10,8 @@ resource "netcup_firewall_policy" "web" {
 }
 
 resource "netcup_server_firewall" "srv" {
-  server_id  = 296155
-  mac        = "ba:ad:7a:1f:d3:68"
+  server_id  = 12345
+  mac        = "00:00:5e:00:53:01"
   policy_ids = [netcup_firewall_policy.web.id]
   active     = true
 }

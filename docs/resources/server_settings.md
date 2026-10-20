@@ -16,7 +16,7 @@ Settings of an existing netcup server (SCP REST API). Only attributes set in the
 # Manage selected settings of an existing server. Attributes left out keep
 # their current value.
 resource "netcup_server_settings" "web" {
-  server_id   = 296155
+  server_id   = 12345
   hostname    = "web01.example.com"
   nickname    = "web01"
   autostart   = true
@@ -66,5 +66,5 @@ The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/c
 
 ```shell
 # Import format: <server_id>
-terraform import netcup_server_settings.web 296155
+terraform import netcup_server_settings.web 12345
 ```

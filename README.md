@@ -103,11 +103,11 @@ terraform import netcup_dns_record.www            example.com:123456789
 terraform import netcup_dns_zone.example          example.com
 terraform import netcup_reverse_dns.mail          203.0.113.10
 terraform import netcup_ssh_key.deploy            42
-terraform import netcup_firewall_policy.web       174780
-terraform import netcup_server_snapshot.daily     296155/daily
-terraform import netcup_server_firewall.srv       296155/ba:ad:7a:1f:d3:68
+terraform import netcup_firewall_policy.web       1234
+terraform import netcup_server_snapshot.daily     12345/daily
+terraform import netcup_server_firewall.srv       12345/00:00:5e:00:53:01
 terraform import netcup_failover_ip_route.primary v4/1234
-terraform import netcup_server_settings.web       296155
+terraform import netcup_server_settings.web       12345
 ```
 
 ## Developing the Provider

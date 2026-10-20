@@ -202,7 +202,7 @@ func (r *serverFirewallResource) Delete(ctx context.Context, req resource.Delete
 func (r *serverFirewallResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	parts := strings.SplitN(req.ID, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		resp.Diagnostics.AddError("Invalid import ID", "Expected format <server_id>/<mac>, e.g. 296155/ba:ad:7a:1f:d3:68")
+		resp.Diagnostics.AddError("Invalid import ID", "Expected format <server_id>/<mac>, e.g. 12345/00:00:5e:00:53:01")
 		return
 	}
 	sid, err := strconv.ParseInt(parts[0], 10, 64)

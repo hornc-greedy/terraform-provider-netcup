@@ -11,7 +11,7 @@ import (
 func TestFirewallPolicyCRUD(t *testing.T) {
 	c := sshTestClient(t, func(method, path string, body []byte) (int, string) {
 		switch {
-		case method == "POST" && path == "/users/78513/firewall-policies":
+		case method == "POST" && path == "/users/4242/firewall-policies":
 			// Verify the correct (plural) field names are sent.
 			b := string(body)
 			if !strings.Contains(b, `"sources"`) || !strings.Contains(b, `"destinationPorts"`) {
@@ -21,11 +21,11 @@ func TestFirewallPolicyCRUD(t *testing.T) {
 				t.Fatalf("body contains non-existent fields: %s", b)
 			}
 			return 201, `{"id":7,"name":"p","description":"d","rules":[{"action":"ACCEPT","protocol":"TCP","direction":"INGRESS","destinationPorts":"22","sources":["0.0.0.0/0"],"description":"ssh"}]}`
-		case method == "GET" && path == "/users/78513/firewall-policies/7":
+		case method == "GET" && path == "/users/4242/firewall-policies/7":
 			return 200, `{"id":7,"name":"p","description":"d","rules":[{"action":"ACCEPT","protocol":"TCP","direction":"INGRESS","destinationPorts":"22","sources":["0.0.0.0/0"],"description":"ssh"}]}`
-		case method == "PUT" && path == "/users/78513/firewall-policies/7":
+		case method == "PUT" && path == "/users/4242/firewall-policies/7":
 			return 200, ``
-		case method == "DELETE" && path == "/users/78513/firewall-policies/7":
+		case method == "DELETE" && path == "/users/4242/firewall-policies/7":
 			return 204, ``
 		}
 		t.Fatalf("unexpected %s %s", method, path)

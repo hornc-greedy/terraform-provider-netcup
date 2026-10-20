@@ -352,7 +352,7 @@ func (r *serverSettingsResource) Delete(_ context.Context, _ resource.DeleteRequ
 func (r *serverSettingsResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id, err := strconv.ParseInt(req.ID, 10, 64)
 	if err != nil {
-		resp.Diagnostics.AddError("Invalid import ID", "Expected the numeric server id, e.g. 296155")
+		resp.Diagnostics.AddError("Invalid import ID", "Expected the numeric server id, e.g. 12345")
 		return
 	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("server_id"), id)...)

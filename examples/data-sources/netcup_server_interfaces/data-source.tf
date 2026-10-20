@@ -1,5 +1,5 @@
 data "netcup_server_interfaces" "srv" {
-  server_id = 296155
+  server_id = 12345
 }
 
 # All IPv4 addresses with their current reverse DNS.

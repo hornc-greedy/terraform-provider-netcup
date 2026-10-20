@@ -14,7 +14,7 @@ A snapshot of a netcup server (SCP REST API). Create and delete are asynchronous
 
 ```terraform
 resource "netcup_server_snapshot" "daily" {
-  server_id   = 296155
+  server_id   = 12345
   name        = "daily"
   description = "Managed by Terraform"
   disk_name   = "vda"
@@ -57,5 +57,5 @@ The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/c
 
 ```shell
 # Import format: <server_id>/<name>
-terraform import netcup_server_snapshot.daily 296155/daily
+terraform import netcup_server_snapshot.daily 12345/daily
 ```

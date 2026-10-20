@@ -13,7 +13,7 @@ import (
 func sshTestClient(t *testing.T, api func(method, path string, body []byte) (int, string)) *Client {
 	c := newTestClient(t, func(method, path string, body []byte) (int, string) {
 		if strings.HasSuffix(path, "/userinfo") {
-			return 200, `{"id":"78513"}`
+			return 200, `{"id":"4242"}`
 		}
 		return api(method, path, body)
 	})
@@ -24,11 +24,11 @@ func sshTestClient(t *testing.T, api func(method, path string, body []byte) (int
 func TestSSHKeyCRUD(t *testing.T) {
 	c := sshTestClient(t, func(method, path string, _ []byte) (int, string) {
 		switch {
-		case method == "POST" && path == "/users/78513/ssh-keys":
+		case method == "POST" && path == "/users/4242/ssh-keys":
 			return 201, `{"id":42,"name":"k","key":"ssh-ed25519 AAA","createdAt":"2026-01-01T00:00:00Z"}`
-		case method == "GET" && path == "/users/78513/ssh-keys":
+		case method == "GET" && path == "/users/4242/ssh-keys":
 			return 200, `[{"id":42,"name":"k","key":"ssh-ed25519 AAA","createdAt":"2026-01-01T00:00:00Z"}]`
-		case method == "DELETE" && path == "/users/78513/ssh-keys/42":
+		case method == "DELETE" && path == "/users/4242/ssh-keys/42":
 			return 204, ``
 		}
 		t.Fatalf("unexpected %s %s", method, path)

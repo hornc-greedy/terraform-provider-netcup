@@ -78,5 +78,5 @@ The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/c
 
 ```shell
 # Import format: the SCP policy id
-terraform import netcup_firewall_policy.web 174780
+terraform import netcup_firewall_policy.web 1234
 ```

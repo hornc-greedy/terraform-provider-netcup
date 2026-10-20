@@ -112,7 +112,7 @@ func TestReverseDNSv6UsesV6Path(t *testing.T) {
 		hit = method + " " + path
 		return 204, ``
 	})
-	if err := c.DeleteReverseDNS(context.Background(), "2a03:4000:47:584::1"); err != nil {
+	if err := c.DeleteReverseDNS(context.Background(), "2001:db8::1"); err != nil {
 		t.Fatalf("DeleteReverseDNS: %v", err)
 	}
 	if !strings.HasPrefix(hit, "DELETE /rdns/ipv6/") {

@@ -59,7 +59,7 @@ func TestRouteFailoverSendsServerID(t *testing.T) {
 	var body string
 	c := sshTestClient(t, func(method, path string, b []byte) (int, string) {
 		switch {
-		case method == "PATCH" && path == "/users/78513/failoverips/v4/9":
+		case method == "PATCH" && path == "/users/4242/failoverips/v4/9":
 			body = string(b)
 			return 202, `{"uuid":"t","state":"FINISHED"}`
 		case path == "/tasks/t":
@@ -68,10 +68,10 @@ func TestRouteFailoverSendsServerID(t *testing.T) {
 		t.Fatalf("unexpected %s %s", method, path)
 		return 500, ""
 	})
-	if err := c.RouteFailover(context.Background(), 9, 296155, false); err != nil {
+	if err := c.RouteFailover(context.Background(), 9, 12345, false); err != nil {
 		t.Fatalf("RouteFailover: %v", err)
 	}
-	if !strings.Contains(body, `"serverId":296155`) {
+	if !strings.Contains(body, `"serverId":12345`) {
 		t.Fatalf("serverId not sent: %s", body)
 	}
 }

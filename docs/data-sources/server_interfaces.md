@@ -14,7 +14,7 @@ Network interfaces of a netcup server, including IPv4/IPv6 addresses and their r
 
 ```terraform
 data "netcup_server_interfaces" "srv" {
-  server_id = 296155
+  server_id = 12345
 }
 
 # All IPv4 addresses with their current reverse DNS.

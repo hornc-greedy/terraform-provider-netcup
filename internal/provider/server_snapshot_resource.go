@@ -206,7 +206,7 @@ func (r *serverSnapshotResource) Delete(ctx context.Context, req resource.Delete
 func (r *serverSnapshotResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	parts := strings.SplitN(req.ID, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		resp.Diagnostics.AddError("Invalid import ID", "Expected format <server_id>/<name>, e.g. 296155/daily")
+		resp.Diagnostics.AddError("Invalid import ID", "Expected format <server_id>/<name>, e.g. 12345/daily")
 		return
 	}
 	sid, err := strconv.ParseInt(parts[0], 10, 64)
