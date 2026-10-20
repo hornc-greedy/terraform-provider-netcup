@@ -8,11 +8,12 @@
 A [Terraform](https://www.terraform.io) provider for [netcup](https://www.netcup.com/),
 built on the [Terraform Plugin Framework](https://developer.hashicorp.com/terraform/plugin/framework).
 
-It manages two independent netcup APIs:
+It covers two netcup APIs, so one provider manages domains on CCP DNS and
+servers:
 
-- **CCP / DomainWebservice** (JSON) — DNS records and zones
-- **SCP REST API** (OAuth 2.0) — reverse DNS, SSH keys, firewall policies,
-  snapshots, failover routing and server settings for your servers
+- **CCP API** (DomainWebservice, JSON) for CCP DNS: records and zones
+- **SCP REST API** (OAuth 2.0) for servers and the objects around them, see
+  [Objects](#objects)
 
 ## Requirements
 
@@ -32,12 +33,12 @@ terraform {
 }
 
 provider "netcup" {
-  # CCP API (DNS) — only needed for DNS resources and data sources.
+  # CCP API, only needed for the netcup_dns_* objects.
   customer_number = var.netcup_customer_number
   api_key         = var.netcup_api_key
   api_password    = var.netcup_api_password
 
-  # SCP REST API — only needed for reverse DNS and server resources.
+  # SCP REST API, only needed for servers and the other SCP objects.
   scp_refresh_token = var.netcup_scp_refresh_token
 }
 
@@ -54,34 +55,25 @@ resource "netcup_reverse_dns" "mail" {
 }
 ```
 
-The two APIs use **independent credentials** — configure only what you need.
-Credentials can also be supplied via the environment:
-`NETCUP_CUSTOMER_NUMBER`, `NETCUP_API_KEY`, `NETCUP_API_PASSWORD` (CCP) and
-`NETCUP_SCP_REFRESH_TOKEN` (SCP).
+Declare these variables with `sensitive = true` and, with Terraform 1.10 or
+newer, `ephemeral = true`, which keeps them out of plan files. The APIs use
+**independent credentials**, so configure only what you need. The credentials
+can also come from the environment: `NETCUP_CUSTOMER_NUMBER`, `NETCUP_API_KEY`
+and `NETCUP_API_PASSWORD` for the CCP API, and `NETCUP_SCP_REFRESH_TOKEN` for the
+SCP REST API.
 
-Generate the CCP API key and password in the netcup CCP under
-**Stammdaten → Webservice / API** (the API password is separate from your login
-password).
+Every resource supports `terraform import` and, with Terraform 1.5 or newer,
+`import` blocks. The
+[documentation on the Terraform Registry](https://registry.terraform.io/providers/hornc-greedy/netcup/latest/docs)
+lists every object, and for each resource its import ID.
 
-Full documentation for every resource and data source is published on the
-[Terraform Registry](https://registry.terraform.io/providers/hornc-greedy/netcup/latest/docs).
+### Authentication
 
-### Resources and data sources
+Create the CCP API key and API password in the CCP under **Master Data > API**.
+The API password is not your login password.
 
-| Type | Names |
-|---|---|
-| DNS (CCP) | `netcup_dns_record`, `netcup_dns_zone`, `netcup_dns_records` |
-| Reverse DNS (SCP) | `netcup_reverse_dns` |
-| Servers (SCP) | `netcup_server_settings`, `netcup_servers`, `netcup_server`, `netcup_server_interfaces` |
-| SSH keys (SCP) | `netcup_ssh_key`, `netcup_ssh_keys` |
-| Firewall (SCP) | `netcup_firewall_policy`, `netcup_firewall_policies`, `netcup_server_firewall` |
-| Snapshots / failover (SCP) | `netcup_server_snapshot`, `netcup_failover_ip_route`, `netcup_failover_ips` |
-| Misc (SCP) | `netcup_maintenance` (deprecated, removed in 2.0.0) |
-
-### SCP refresh token
-
-The SCP REST API uses OAuth 2.0. Obtain an offline refresh token once via the
-OIDC device flow and pass it as `scp_refresh_token`:
+The SCP REST API needs an offline refresh token, obtained once via the OIDC
+device flow:
 
 ```bash
 # 1. Request a device code, then open verification_uri_complete in a browser:
@@ -96,45 +88,50 @@ curl -s -X POST 'https://www.servercontrolpanel.de/realms/scp/protocol/openid-co
 
 The refresh token stays valid as long as it is used at least once every 30 days.
 
-### Import
+### Objects
 
-```bash
-terraform import netcup_dns_record.www            example.com:123456789
-terraform import netcup_dns_zone.example          example.com
-terraform import netcup_reverse_dns.mail          203.0.113.10
-terraform import netcup_ssh_key.deploy            42
-terraform import netcup_firewall_policy.web       1234
-terraform import netcup_server_snapshot.daily     12345/daily
-terraform import netcup_server_firewall.srv       12345/00:00:5e:00:53:01
-terraform import netcup_failover_ip_route.primary v4/1234
-terraform import netcup_server_settings.web       12345
-```
+| Category | Resources | Data sources | Ephemeral | Actions |
+|---|---|---|---|---|
+| CCP DNS | `netcup_dns_record`, `netcup_dns_zone` | `netcup_dns_records` |  |  |
+| Servers | `netcup_server_settings` | `netcup_servers`, `netcup_server` |  |  |
+| Interfaces and reverse DNS | `netcup_reverse_dns` | `netcup_server_interfaces` |  |  |
+| Snapshots | `netcup_server_snapshot` |  |  |  |
+| Firewall | `netcup_firewall_policy`, `netcup_server_firewall` | `netcup_firewall_policies` |  |  |
+| Failover IPs | `netcup_failover_ip_route` | `netcup_failover_ips` |  |  |
+| User and SSH keys | `netcup_ssh_key` | `netcup_ssh_keys` |  |  |
+| Tasks and maintenance |  | `netcup_maintenance` (deprecated, removed in 2.0.0) |  |  |
+
+## Notes and limitations
+
+- **TTL** is a zone setting at netcup (`updateDnsZone`), managed with
+  `netcup_dns_zone` rather than per record.
+- netcup may normalize values such as trailing dots of `CNAME` and `MX` targets
+  or `TXT` quoting. If a diff persists, write the value exactly as netcup stores
+  it.
+- **Reverse DNS** runs over the SCP REST API, not a DNS API, and the IP must
+  belong to one of your servers.
+- **Domain registration and contacts** need reseller-only CCP functions and are
+  not implemented.
 
 ## Developing the Provider
 
-To build and test locally you need [Go](https://go.dev/doc/install) >= 1.26.
+Building needs [Go](https://go.dev/doc/install), linting
+[golangci-lint](https://golangci-lint.run/) v2 (CI uses v2.12.2) with the config
+in `.golangci.yml`.
 
 ```shell
-go build ./...   # compile
-go test ./...    # unit tests (no network, httptest-based)
-go vet ./...
+make build      # compile
+make test       # unit tests
+make lint       # golangci-lint
+make generate   # regenerate docs/
 ```
 
-Linting uses [golangci-lint](https://golangci-lint.run/) (config in
-`.golangci.yml`):
+The docs under `docs/` are published to the Terraform Registry. They are
+generated from the schema descriptions and `examples/` with
+[tfplugindocs](https://github.com/hashicorp/terraform-plugin-docs), so run
+`make generate` after changing a schema or an example.
 
-```shell
-golangci-lint run ./...
-```
-
-The per-resource docs under `docs/` (published to the Terraform Registry) are
-generated from the schema descriptions and the files in `examples/` with
-[tfplugindocs](https://github.com/hashicorp/terraform-plugin-docs); regenerate
-them after changing a schema or an example:
-
-```shell
-go generate ./...   # or: make generate
-```
+### Tests
 
 Acceptance tests create **real** resources and are gated behind `TF_ACC=1` and
 the `NETCUP_*` environment variables. Run them only against a dedicated test
@@ -149,44 +146,24 @@ unless their variables are set:
 
 | Variable | Tests | Effect on the server |
 |---|---|---|
-| `NETCUP_TEST_SERVER_ID` | snapshot, server firewall, server settings | offline snapshot of `vda` restarts the server, firewall of the first interface is cleared, nickname and autostart are set |
-| `NETCUP_TEST_RDNS_IP` | reverse DNS (with `NETCUP_TEST_DOMAIN`) | PTR is deleted afterwards |
+| `NETCUP_TEST_SERVER_ID` | snapshot, server firewall, server settings | offline snapshot of `vda` restarts the server, policies are assigned to the first interface and removed again, nickname and autostart are set |
+| `NETCUP_TEST_RDNS_IP` | reverse DNS (with `NETCUP_TEST_DOMAIN`) | the PTR of the given IP, which must belong to the server, is set, changed and deleted |
 | `NETCUP_TEST_FAILOVER_IP_ID` | failover route (with `NETCUP_TEST_SERVER_ID`) | IPv4 failover IP stays routed to that server |
 
-To try the provider against the live API without releasing it, build a binary
-and point Terraform at it with a `dev_overrides` block in your CLI config
-(`~/.terraformrc`):
+### Trying a local build
+
+To try a local build against the real API, run `go install .` and point
+Terraform at your `GOBIN`, by default `~/go/bin`, with a `dev_overrides` block in
+`~/.terraformrc`:
 
 ```hcl
 provider_installation {
   dev_overrides {
-    "hornc-greedy/netcup" = "/path/to/built/binary/dir"
+    "hornc-greedy/netcup" = "<GOBIN>"
   }
   direct {}
 }
 ```
-
-## Notes and limitations
-
-- **TTL** is a zone-level setting at netcup (`updateDnsZone`), exposed via
-  `netcup_dns_zone` rather than as an attribute of individual records
-- `netcup_dns_zone` manages the settings of an **existing** zone; it never
-  creates or deletes the zone (`destroy` only drops it from state)
-- netcup may normalize some values (trailing dots on `CNAME`/`MX` targets, `TXT`
-  quoting); if you hit a perpetual diff, write the value exactly as netcup
-  stores it
-- **Reverse DNS (PTR)** is managed via the SCP REST API, not the DNS API; the IP
-  must already belong to one of your servers
-- **Domain registration and contacts** require netcup's reseller-only CCP
-  methods, which return `4020 Function not available` on a standard account, so
-  they are intentionally not implemented
-- An **offline snapshot** (`online = false`, the default) restarts the server
-  and needs `disk_name`
-- netcup cannot unroute a failover IP, so `destroy` of
-  `netcup_failover_ip_route` keeps its current routing
-- `netcup_server_settings` manages only the attributes you set on an
-  **existing** server and never creates or deletes it (`destroy` only drops
-  it from state)
 
 ## License
 
