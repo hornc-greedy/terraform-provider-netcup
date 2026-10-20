@@ -5,10 +5,12 @@ linters:
   default: none
   enable:
     - copyloopvar
+    - dupword
     - durationcheck
     - errcheck
     - forcetypeassert
     - godot
+    - godox
     - ineffassign
     - makezero
     - misspell
