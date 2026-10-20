@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"slices"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -39,6 +40,25 @@ func stringListValue(ctx context.Context, in []string, diags *diag.Diagnostics) 
 	return l
 }
 
+// sameAddresses reports whether a and b hold the same addresses. netcup defines
+// them as unique items and specifies no order.
+func sameAddresses(a, b []string) bool {
+	return slices.Equal(slices.Sorted(slices.Values(a)), slices.Sorted(slices.Values(b)))
+}
+
+// addressList keeps the prior list while netcup returns the same addresses, so
+// the configured order and an empty list stay stable.
+func addressList(ctx context.Context, prior types.List, in []string, diags *diag.Diagnostics) types.List {
+	if !prior.IsNull() {
+		var priorAddresses []string
+		diags.Append(prior.ElementsAs(ctx, &priorAddresses, false)...)
+		if sameAddresses(priorAddresses, in) {
+			return prior
+		}
+	}
+	return stringListValue(ctx, in, diags)
+}
+
 // optString maps an empty API string to a null attribute value, so optional
 // fields the user left unset do not show as "" drift.
 func optString(s string) types.String {
@@ -48,16 +68,21 @@ func optString(s string) types.String {
 	return types.StringValue(s)
 }
 
-// rulesToModel converts API rules into the resource's rule models.
-func rulesToModel(ctx context.Context, rules []scp.FirewallRule, diags *diag.Diagnostics) []firewallRuleModel {
+// rulesToModel converts API rules into the resource's rule models, comparing
+// each rule with the prior rule at the same position.
+func rulesToModel(ctx context.Context, rules []scp.FirewallRule, prior []firewallRuleModel, diags *diag.Diagnostics) []firewallRuleModel {
 	out := make([]firewallRuleModel, 0, len(rules))
-	for _, r := range rules {
+	for i, r := range rules {
+		var priorRule firewallRuleModel
+		if i < len(prior) {
+			priorRule = prior[i]
+		}
 		out = append(out, firewallRuleModel{
 			Action:           types.StringValue(r.Action),
 			Protocol:         types.StringValue(r.Protocol),
 			Direction:        types.StringValue(r.Direction),
-			Sources:          stringListValue(ctx, r.Sources, diags),
-			Destinations:     stringListValue(ctx, r.Destinations, diags),
+			Sources:          addressList(ctx, priorRule.Sources, r.Sources, diags),
+			Destinations:     addressList(ctx, priorRule.Destinations, r.Destinations, diags),
 			SourcePorts:      optString(r.SourcePorts),
 			DestinationPorts: optString(r.DestinationPorts),
 			Description:      optString(r.Description),

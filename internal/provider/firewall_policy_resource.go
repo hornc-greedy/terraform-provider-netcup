@@ -203,7 +203,7 @@ func (r *firewallPolicyResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 	state.Name = types.StringValue(pol.Name)
 	state.Description = types.StringValue(pol.Description)
-	state.Rules = rulesToModel(ctx, pol.Rules, &resp.Diagnostics)
+	state.Rules = rulesToModel(ctx, pol.Rules, state.Rules, &resp.Diagnostics)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
