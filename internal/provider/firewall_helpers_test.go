@@ -4,6 +4,8 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -76,5 +78,17 @@ func TestRulesToModelWithoutPriorRule(t *testing.T) {
 	}
 	if !got[0].Destinations.IsNull() || !got[0].Description.IsNull() {
 		t.Fatalf("unset values not null: %+v", got[0])
+	}
+}
+
+func TestToAPISendsEmptyRules(t *testing.T) {
+	var diags diag.Diagnostics
+	m := firewallPolicyModel{Name: types.StringValue("p")}
+	body, err := json.Marshal(m.toAPI(context.Background(), &diagAppender{diags: &diags}))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(body), `"rules":[]`) {
+		t.Fatalf("rules not sent: %s", body)
 	}
 }

@@ -57,6 +57,27 @@ func TestFirewallPolicyCRUD(t *testing.T) {
 	}
 }
 
+func TestUpdateFirewallPolicySendsClearedFields(t *testing.T) {
+	var body string
+	c := sshTestClient(t, func(method, path string, b []byte) (int, string) {
+		switch {
+		case method == "PUT" && path == "/users/4242/firewall-policies/7":
+			body = string(b)
+			return 202, `{"firewallPolicy":{"id":7}}`
+		case method == "GET" && path == "/users/4242/firewall-policies/7":
+			return 200, `{"id":7,"name":"p","rules":[]}`
+		}
+		t.Fatalf("unexpected %s %s", method, path)
+		return 500, ""
+	})
+	if _, err := c.UpdateFirewallPolicy(context.Background(), 7, FirewallPolicy{Name: "p", Rules: []FirewallRule{}}); err != nil {
+		t.Fatalf("UpdateFirewallPolicy: %v", err)
+	}
+	if !strings.Contains(body, `"description":""`) || !strings.Contains(body, `"rules":[]`) {
+		t.Fatalf("cleared fields not sent: %s", body)
+	}
+}
+
 func TestMaintenanceDecode(t *testing.T) {
 	c := newTestClient(t, func(method, path string, _ []byte) (int, string) {
 		return 200, `{"startAt":null,"finishAt":null}`

@@ -42,6 +42,51 @@ func TestAccFirewallPolicyResource(t *testing.T) {
 	})
 }
 
+// resource.Test fails on a non-empty plan after each step, so this also proves
+// that the unsorted addresses and the empty values stay stable.
+func TestAccFirewallPolicyKeepsConfiguredValues(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheckSCP(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckFirewallPolicyDestroy,
+		Steps: []resource.TestStep{
+			{ // unsorted addresses, empty values, index access
+				Config: `
+resource "netcup_firewall_policy" "test" {
+  name        = "tf-acc-test-values"
+  description = "cleared in the next step"
+
+  rule {
+    action       = "ACCEPT"
+    protocol     = "TCP"
+    direction    = "INGRESS"
+    sources      = ["203.0.113.20/32", "192.0.2.10/32", "198.51.100.5/32"]
+    destinations = []
+    description  = ""
+  }
+}
+
+output "first_source" {
+  value = netcup_firewall_policy.test.rule[0].sources[0]
+}
+`,
+				Check: resource.TestCheckOutput("first_source", "203.0.113.20/32"),
+			},
+			{ // cleared description and rules
+				Config: `
+resource "netcup_firewall_policy" "test" {
+  name = "tf-acc-test-values"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("netcup_firewall_policy.test", "description", ""),
+					resource.TestCheckResourceAttr("netcup_firewall_policy.test", "rule.#", "0"),
+				),
+			},
+		},
+	})
+}
+
 func testAccCheckFirewallPolicyDestroy(s *terraform.State) error {
 	c := testAccSCPClient()
 	for _, rs := range s.RootModule().Resources {

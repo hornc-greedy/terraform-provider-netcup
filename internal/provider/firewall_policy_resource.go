@@ -144,6 +144,7 @@ func (m firewallPolicyModel) toAPI(ctx context.Context, da *diagAppender) scp.Fi
 	p := scp.FirewallPolicy{
 		Name:        m.Name.ValueString(),
 		Description: m.Description.ValueString(),
+		Rules:       make([]scp.FirewallRule, 0, len(m.Rules)),
 	}
 	for _, rule := range m.Rules {
 		p.Rules = append(p.Rules, scp.FirewallRule{

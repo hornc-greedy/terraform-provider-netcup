@@ -26,12 +26,13 @@ type FirewallRule struct {
 
 // FirewallPolicy mirrors the FirewallPolicy schema. On create the API consumes
 // the FirewallPolicySave shape (name, description, rules); id is omitted then
-// and populated on read.
+// and populated on read. Description and rules are always sent, so an update
+// can clear them.
 type FirewallPolicy struct {
 	ID          int            `json:"id,omitempty"`
 	Name        string         `json:"name"`
-	Description string         `json:"description,omitempty"`
-	Rules       []FirewallRule `json:"rules,omitempty"`
+	Description string         `json:"description"`
+	Rules       []FirewallRule `json:"rules"`
 }
 
 func (c *Client) fwBase(ctx context.Context) (string, error) {
