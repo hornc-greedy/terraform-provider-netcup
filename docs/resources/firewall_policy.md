@@ -48,6 +48,7 @@ resource "netcup_firewall_policy" "web" {
 
 - `description` (String) Policy description.
 - `rule` (Block List) Firewall rules, evaluated in order. (see [below for nested schema](#nestedblock--rule))
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
@@ -69,6 +70,14 @@ Optional:
 - `destinations` (List of String) Destination CIDRs/addresses.
 - `source_ports` (String) Source port or range.
 - `sources` (List of String) Source CIDRs/addresses.
+
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
 
 ## Import
 

@@ -5,7 +5,9 @@ package provider
 import (
 	"context"
 	"strconv"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -39,6 +41,7 @@ type firewallPolicyModel struct {
 	Name        types.String        `tfsdk:"name"`
 	Description types.String        `tfsdk:"description"`
 	Rules       []firewallRuleModel `tfsdk:"rule"`
+	Timeouts    timeouts.Value      `tfsdk:"timeouts"`
 }
 
 type firewallRuleModel struct {
@@ -56,7 +59,7 @@ func (r *firewallPolicyResource) Metadata(_ context.Context, req resource.Metada
 	resp.TypeName = req.ProviderTypeName + "_firewall_policy"
 }
 
-func (r *firewallPolicyResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *firewallPolicyResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "A firewall policy in the netcup SCP account, assignable to server interfaces.",
 		Attributes: map[string]schema.Attribute{
@@ -75,6 +78,9 @@ func (r *firewallPolicyResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Default:             stringdefault.StaticString(""),
 				MarkdownDescription: "Policy description.",
 			},
+			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
+				Update: true,
+			}),
 		},
 		Blocks: map[string]schema.Block{
 			"rule": schema.ListNestedBlock{
@@ -219,6 +225,13 @@ func (r *firewallPolicyResource) Update(ctx context.Context, req resource.Update
 		resp.Diagnostics.AddError("Invalid policy id", err.Error())
 		return
 	}
+	updateTimeout, diags := plan.Timeouts.Update(ctx, 10*time.Minute)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
 	da := &diagAppender{diags: &resp.Diagnostics}
 	api := plan.toAPI(ctx, da)
 	if resp.Diagnostics.HasError() {

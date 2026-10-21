@@ -34,9 +34,10 @@ func TestAccFirewallPolicyResource(t *testing.T) {
 				Check:  resource.TestCheckResourceAttr("netcup_firewall_policy.test", "rule.0.description", "web ingress updated"),
 			},
 			{ // import (passthrough numeric id)
-				ResourceName:      "netcup_firewall_policy.test",
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            "netcup_firewall_policy.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"timeouts"},
 			},
 		},
 	})
@@ -82,6 +83,29 @@ resource "netcup_firewall_policy" "test" {
 					resource.TestCheckResourceAttr("netcup_firewall_policy.test", "description", ""),
 					resource.TestCheckResourceAttr("netcup_firewall_policy.test", "rule.#", "0"),
 				),
+			},
+		},
+	})
+}
+
+// State written by v1.1.0 has no timeouts attribute and must plan without
+// changes.
+func TestAccFirewallPolicyUpgradeFromV110(t *testing.T) {
+	config := testAccFirewallPolicyConfig("tf-acc-test-upgrade", "web ingress")
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheckSCP(t) },
+		CheckDestroy: testAccCheckFirewallPolicyDestroy,
+		Steps: []resource.TestStep{
+			{
+				ExternalProviders: map[string]resource.ExternalProvider{
+					"netcup": {Source: "hornc-greedy/netcup", VersionConstraint: "1.1.0"},
+				},
+				Config: config,
+			},
+			{
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Config:                   config,
+				PlanOnly:                 true,
 			},
 		},
 	})
