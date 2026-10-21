@@ -82,13 +82,20 @@ func (c *Client) CreateFirewallPolicy(ctx context.Context, p FirewallPolicy) (*F
 	return &out, nil
 }
 
-// UpdateFirewallPolicy updates a policy in place and returns the fresh state.
+// UpdateFirewallPolicy updates a policy in place, waits for the task in taskInfo
+// and returns the fresh state.
 func (c *Client) UpdateFirewallPolicy(ctx context.Context, id int, p FirewallPolicy) (*FirewallPolicy, error) {
 	base, err := c.fwBase(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.do(ctx, "PUT", base+"/"+strconv.Itoa(id), p, nil); err != nil {
+	var result struct {
+		TaskInfo TaskInfo `json:"taskInfo"`
+	}
+	if err := c.do(ctx, "PUT", base+"/"+strconv.Itoa(id), p, &result); err != nil {
+		return nil, err
+	}
+	if err := c.waitForTask(ctx, result.TaskInfo.UUID); err != nil {
 		return nil, err
 	}
 	return c.GetFirewallPolicy(ctx, id)

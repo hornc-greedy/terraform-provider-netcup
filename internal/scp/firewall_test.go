@@ -78,6 +78,46 @@ func TestUpdateFirewallPolicySendsClearedFields(t *testing.T) {
 	}
 }
 
+func TestUpdateFirewallPolicyWaitsForTask(t *testing.T) {
+	polls := 0
+	c := sshTestClient(t, func(method, path string, _ []byte) (int, string) {
+		switch {
+		case method == "PUT" && path == "/users/4242/firewall-policies/7":
+			return 202, `{"firewallPolicy":{"id":7},"taskInfo":{"uuid":"task-1","state":"PENDING"}}`
+		case method == "GET" && path == "/tasks/task-1":
+			polls++
+			return 200, `{"uuid":"task-1","state":"FINISHED"}`
+		case method == "GET" && path == "/users/4242/firewall-policies/7":
+			return 200, `{"id":7,"name":"p"}`
+		}
+		t.Fatalf("unexpected %s %s", method, path)
+		return 500, ""
+	})
+	if _, err := c.UpdateFirewallPolicy(context.Background(), 7, FirewallPolicy{Name: "p"}); err != nil {
+		t.Fatalf("UpdateFirewallPolicy: %v", err)
+	}
+	if polls != 1 {
+		t.Fatalf("polls = %d, want 1", polls)
+	}
+}
+
+func TestUpdateFirewallPolicyReportsFailedTask(t *testing.T) {
+	c := sshTestClient(t, func(method, path string, _ []byte) (int, string) {
+		switch {
+		case method == "PUT" && path == "/users/4242/firewall-policies/7":
+			return 202, `{"taskInfo":{"uuid":"task-1","state":"PENDING"}}`
+		case method == "GET" && path == "/tasks/task-1":
+			return 200, `{"uuid":"task-1","state":"ERROR","message":"boom"}`
+		}
+		t.Fatalf("unexpected %s %s", method, path)
+		return 500, ""
+	})
+	_, err := c.UpdateFirewallPolicy(context.Background(), 7, FirewallPolicy{Name: "p"})
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("expected task error, got %v", err)
+	}
+}
+
 func TestMaintenanceDecode(t *testing.T) {
 	c := newTestClient(t, func(method, path string, _ []byte) (int, string) {
 		return 200, `{"startAt":null,"finishAt":null}`
