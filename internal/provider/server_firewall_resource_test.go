@@ -38,6 +38,10 @@ func TestAccServerFirewallResource(t *testing.T) {
 				Config: testAccServerFirewallConfig(serverID, "[netcup_firewall_policy.a.id, netcup_firewall_policy.b.id]"),
 				Check:  resource.TestCheckResourceAttr("netcup_server_firewall.test", "policy_ids.#", "2"),
 			},
+			{ // reversed policy order
+				Config: testAccServerFirewallConfig(serverID, "[netcup_firewall_policy.b.id, netcup_firewall_policy.a.id]"),
+				Check:  resource.TestCheckResourceAttrPair("netcup_server_firewall.test", "policy_ids.0", "netcup_firewall_policy.b", "id"),
+			},
 			{ // import (composite id <server_id>/<mac>)
 				ResourceName:            "netcup_server_firewall.test",
 				ImportState:             true,
