@@ -44,6 +44,7 @@ resource "netcup_server_firewall" "srv" {
 ### Optional
 
 - `active` (Boolean) Whether the firewall is active. Defaults to `true`.
+- `keep_copied_policies` (Boolean) Whether the copied policies of the interface stay assigned. Defaults to `false`, which removes them on create, update and destroy.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only

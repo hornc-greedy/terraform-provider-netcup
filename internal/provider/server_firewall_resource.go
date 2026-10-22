@@ -36,12 +36,13 @@ func NewServerFirewallResource() resource.Resource {
 }
 
 type serverFirewallModel struct {
-	ID        types.String   `tfsdk:"id"`
-	ServerID  types.Int64    `tfsdk:"server_id"`
-	Mac       types.String   `tfsdk:"mac"`
-	PolicyIDs types.List     `tfsdk:"policy_ids"`
-	Active    types.Bool     `tfsdk:"active"`
-	Timeouts  timeouts.Value `tfsdk:"timeouts"`
+	ID                 types.String   `tfsdk:"id"`
+	ServerID           types.Int64    `tfsdk:"server_id"`
+	Mac                types.String   `tfsdk:"mac"`
+	PolicyIDs          types.List     `tfsdk:"policy_ids"`
+	Active             types.Bool     `tfsdk:"active"`
+	KeepCopiedPolicies types.Bool     `tfsdk:"keep_copied_policies"`
+	Timeouts           timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (r *serverFirewallResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -79,6 +80,12 @@ func (r *serverFirewallResource) Schema(ctx context.Context, _ resource.SchemaRe
 				Default:             booldefault.StaticBool(true),
 				MarkdownDescription: "Whether the firewall is active. Defaults to `true`.",
 			},
+			"keep_copied_policies": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "Whether the copied policies of the interface stay assigned. Defaults to `false`, which removes them on create, update and destroy.",
+			},
 			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
 				Create: true,
 				Update: true,
@@ -112,7 +119,7 @@ func (m serverFirewallModel) policyIDs(ctx context.Context, da *diagAppender) []
 func (r *serverFirewallResource) set(ctx context.Context, plan serverFirewallModel, diags *diagAppender) error {
 	return r.client.SetServerFirewall(ctx,
 		int(plan.ServerID.ValueInt64()), plan.Mac.ValueString(),
-		plan.policyIDs(ctx, diags), plan.Active.ValueBool())
+		plan.policyIDs(ctx, diags), plan.Active.ValueBool(), plan.KeepCopiedPolicies.ValueBool())
 }
 
 func (r *serverFirewallResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -160,6 +167,9 @@ func (r *serverFirewallResource) Read(ctx context.Context, req resource.ReadRequ
 	resp.Diagnostics.Append(d...)
 	state.PolicyIDs = list
 	state.Active = types.BoolValue(fw.Active)
+	// A null value after an upgrade or import means false and must match the
+	// default.
+	state.KeepCopiedPolicies = types.BoolValue(state.KeepCopiedPolicies.ValueBool())
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
@@ -197,8 +207,9 @@ func (r *serverFirewallResource) Delete(ctx context.Context, req resource.Delete
 	}
 	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
 	defer cancel()
-	// Clearing the assignment: no policies, firewall inactive.
-	if err := r.client.SetServerFirewall(ctx, int(state.ServerID.ValueInt64()), state.Mac.ValueString(), nil, false); err != nil {
+	// No user policies, copied policies only with keep_copied_policies, firewall
+	// inactive.
+	if err := r.client.SetServerFirewall(ctx, int(state.ServerID.ValueInt64()), state.Mac.ValueString(), nil, false, state.KeepCopiedPolicies.ValueBool()); err != nil {
 		resp.Diagnostics.AddError("Error clearing firewall assignment", err.Error())
 	}
 }

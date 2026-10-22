@@ -42,9 +42,21 @@ func (c *Client) GetServerFirewall(ctx context.Context, serverID int, mac string
 
 // SetServerFirewall assigns the given user-policy ids to a server interface and
 // waits for the async task. active controls whether the firewall is enabled.
-func (c *Client) SetServerFirewall(ctx context.Context, serverID int, mac string, userPolicyIDs []int, active bool) error {
+// The body replaces the copied policies, so they are removed unless keepCopied
+// is set.
+func (c *Client) SetServerFirewall(ctx context.Context, serverID int, mac string, userPolicyIDs []int, active, keepCopied bool) error {
+	copied := []identifier{}
+	if keepCopied {
+		cur, err := c.GetServerFirewall(ctx, serverID, mac)
+		if err != nil {
+			return err
+		}
+		for _, p := range cur.CopiedPolicies {
+			copied = append(copied, identifier{ID: p.ID})
+		}
+	}
 	body := serverFirewallSave{
-		CopiedPolicies: []identifier{},
+		CopiedPolicies: copied,
 		UserPolicies:   make([]identifier, 0, len(userPolicyIDs)),
 		Active:         active,
 	}

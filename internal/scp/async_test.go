@@ -106,10 +106,36 @@ func TestSetServerFirewallBody(t *testing.T) {
 		t.Fatalf("unexpected %s %s", method, path)
 		return 500, ""
 	})
-	if err := c.SetServerFirewall(context.Background(), 5, "aa:bb", []int{7, 8}, true); err != nil {
+	if err := c.SetServerFirewall(context.Background(), 5, "aa:bb", []int{7, 8}, true, false); err != nil {
 		t.Fatalf("SetServerFirewall: %v", err)
 	}
 	if !strings.Contains(body, `"userPolicies":[{"id":7},{"id":8}]`) || !strings.Contains(body, `"active":true`) {
 		t.Fatalf("unexpected body: %s", body)
+	}
+	if !strings.Contains(body, `"copiedPolicies":[]`) {
+		t.Fatalf("copied policies not cleared: %s", body)
+	}
+}
+
+func TestSetServerFirewallKeepsCopiedPolicies(t *testing.T) {
+	var body string
+	c := newTestClient(t, func(method, path string, b []byte) (int, string) {
+		switch {
+		case method == "GET" && path == "/servers/5/interfaces/aa:bb/firewall":
+			return 200, `{"copiedPolicies":[{"id":3},{"id":4}],"userPolicies":[],"active":true}`
+		case method == "PUT" && path == "/servers/5/interfaces/aa:bb/firewall":
+			body = string(b)
+			return 202, `{"uuid":"t","state":"FINISHED"}`
+		case path == "/tasks/t":
+			return 200, `{"uuid":"t","state":"FINISHED"}`
+		}
+		t.Fatalf("unexpected %s %s", method, path)
+		return 500, ""
+	})
+	if err := c.SetServerFirewall(context.Background(), 5, "aa:bb", []int{7}, true, true); err != nil {
+		t.Fatalf("SetServerFirewall: %v", err)
+	}
+	if !strings.Contains(body, `"copiedPolicies":[{"id":3},{"id":4}]`) {
+		t.Fatalf("copied policies not kept: %s", body)
 	}
 }
