@@ -145,6 +145,10 @@ func (r *serverFirewallResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 	fw, err := r.client.GetServerFirewall(ctx, int(state.ServerID.ValueInt64()), state.Mac.ValueString())
 	if err != nil {
+		if scp.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError("Error reading server firewall", err.Error())
 		return
 	}
