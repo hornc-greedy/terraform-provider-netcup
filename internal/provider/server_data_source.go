@@ -87,7 +87,7 @@ func (d *serverDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	cfg.Disabled = types.BoolValue(s.Disabled)
 	cfg.Architecture = types.StringValue(s.Architecture)
 	cfg.MaxCPUCount = types.Int64Value(int64(s.MaxCPUCount))
-	cfg.SnapshotCount = types.Int64Value(int64(s.SnapshotCount))
+	cfg.SnapshotCount = types.Int64Value(int64(s.ExportCount))
 	cfg.RescueSystemActive = types.BoolValue(s.RescueSystemActive)
 	resp.Diagnostics.Append(resp.State.Set(ctx, cfg)...)
 }

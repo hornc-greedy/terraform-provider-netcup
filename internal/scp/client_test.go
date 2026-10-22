@@ -145,6 +145,19 @@ func TestGetInterfacesShape(t *testing.T) {
 	}
 }
 
+func TestGetServerReadsExportCount(t *testing.T) {
+	c := newTestClient(t, func(method, path string, _ []byte) (int, string) {
+		return 200, `{"id":5,"exportCount":3}`
+	})
+	s, err := c.GetServer(context.Background(), 5)
+	if err != nil {
+		t.Fatalf("GetServer: %v", err)
+	}
+	if s.ExportCount != 3 {
+		t.Fatalf("ExportCount = %d, want 3", s.ExportCount)
+	}
+}
+
 func TestAPIErrorParsed(t *testing.T) {
 	c := newTestClient(t, func(method, path string, _ []byte) (int, string) {
 		return 422, `{"code":"422","message":"Validation error."}`

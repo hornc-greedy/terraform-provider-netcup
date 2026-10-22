@@ -13,7 +13,7 @@ type Server struct {
 
 	Architecture       string `json:"architecture"`
 	MaxCPUCount        int    `json:"maxCpuCount"`
-	SnapshotCount      int    `json:"snapshotCount"`
+	ExportCount        int    `json:"exportCount"`
 	RescueSystemActive bool   `json:"rescueSystemActive"`
 
 	LiveInfo *ServerLiveInfo `json:"serverLiveInfo"`
