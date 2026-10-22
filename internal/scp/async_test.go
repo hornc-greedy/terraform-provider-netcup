@@ -55,6 +55,23 @@ func TestTaskErrorIsReported(t *testing.T) {
 	}
 }
 
+func TestTaskResponseErrorIsReported(t *testing.T) {
+	c := newTestClient(t, func(method, path string, _ []byte) (int, string) {
+		switch {
+		case method == "DELETE" && strings.HasPrefix(path, "/servers/5/snapshots/"):
+			return 202, `{"uuid":"task-x","state":"PENDING"}`
+		case path == "/tasks/task-x":
+			return 200, `{"uuid":"task-x","state":"ERROR","message":null,"responseError":{"code":"c","message":"boom"}}`
+		}
+		t.Fatalf("unexpected %s %s", method, path)
+		return 500, ""
+	})
+	err := c.DeleteSnapshot(context.Background(), 5, "snap1")
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("expected task error, got %v", err)
+	}
+}
+
 func TestRouteFailoverSendsServerID(t *testing.T) {
 	var body string
 	c := sshTestClient(t, func(method, path string, b []byte) (int, string) {

@@ -11,10 +11,29 @@ import (
 // TaskInfo is the (subset of the) response of asynchronous operations and of
 // GET /tasks/{uuid}.
 type TaskInfo struct {
-	UUID    string `json:"uuid"`
-	Name    string `json:"name"`
-	State   string `json:"state"`
+	UUID          string         `json:"uuid"`
+	Name          string         `json:"name"`
+	State         string         `json:"state"`
+	Message       string         `json:"message"`
+	ResponseError *ResponseError `json:"responseError"`
+}
+
+// ResponseError mirrors the ResponseError schema, which TaskInfo holds beside
+// its nullable message.
+type ResponseError struct {
+	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+// failure returns what netcup reports about a failed task.
+func (t TaskInfo) failure() string {
+	if t.ResponseError == nil || t.ResponseError.Message == "" {
+		return t.Message
+	}
+	if t.Message == "" {
+		return t.ResponseError.Message
+	}
+	return t.Message + ": " + t.ResponseError.Message
 }
 
 // done reports whether the task has reached a terminal state and polling can
@@ -50,7 +69,7 @@ func (c *Client) waitForTask(ctx context.Context, uuid string) error {
 		}
 		if t.done() {
 			if t.State != "FINISHED" {
-				return fmt.Errorf("task %s ended in state %s: %s", uuid, t.State, t.Message)
+				return fmt.Errorf("task %s ended in state %s: %s", uuid, t.State, t.failure())
 			}
 			return nil
 		}
