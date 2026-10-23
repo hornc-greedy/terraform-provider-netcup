@@ -37,6 +37,19 @@ func TestAccSSHKeyResource(t *testing.T) {
 	})
 }
 
+// A key from file() ends with a newline. resource.Test fails if netcup returns
+// it changed, because any difference plans a replacement.
+func TestAccSSHKeyTrailingNewline(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheckSCP(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckSSHKeyDestroy,
+		Steps: []resource.TestStep{
+			{Config: testAccSSHKeyConfig("tf-acc-test-newline", testAccSSHPubKey+"\n")},
+		},
+	})
+}
+
 func testAccCheckSSHKeyDestroy(s *terraform.State) error {
 	c := testAccSCPClient()
 	for _, rs := range s.RootModule().Resources {
