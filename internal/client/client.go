@@ -17,6 +17,10 @@ import (
 // DefaultEndpoint is the JSON endpoint of the netcup CCP DomainWebservice.
 const DefaultEndpoint = "https://ccp.netcup.net/run/webservice/servers/endpoint.php?JSON"
 
+// sessionMaxIdle is one minute below the 15 minutes without a request after
+// which netcup ends a session.
+const sessionMaxIdle = 14 * time.Minute
+
 // Client talks to the netcup CCP API. It is safe for concurrent use: the API
 // session is guarded by mu, and writes to a single DNS zone are serialized per
 // domain via zoneMu (updateDnsRecords operates on a whole zone).
@@ -27,9 +31,10 @@ type Client struct {
 	Endpoint       string
 	HTTPClient     *http.Client
 
-	mu        sync.Mutex
-	sessionID string
-	zoneMu    sync.Map // domain -> *sync.Mutex
+	mu          sync.Mutex
+	sessionID   string
+	sessionUsed time.Time
+	zoneMu      sync.Map // domain -> *sync.Mutex
 }
 
 // New returns a Client for DefaultEndpoint with a 30 second HTTP timeout.
@@ -82,13 +87,14 @@ func (c *Client) do(ctx context.Context, action string, param any) (json.RawMess
 	return env.ResponseData, nil
 }
 
-// ensureSession logs in once and caches the session id. netcup sessions expire
-// after a short idle period; for the lifetime of a single Terraform run that is
-// not a concern, so there is deliberately no logout/refresh dance here.
+// ensureSession caches the session id and logs in again once the session has
+// been idle for sessionMaxIdle, e.g. during a long snapshot in the same
+// Terraform run.
 func (c *Client) ensureSession(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.sessionID != "" {
+	if c.sessionID != "" && time.Since(c.sessionUsed) < sessionMaxIdle {
+		c.sessionUsed = time.Now()
 		return nil
 	}
 	raw, err := c.do(ctx, "login", map[string]any{
@@ -106,6 +112,7 @@ func (c *Client) ensureSession(ctx context.Context) error {
 		return fmt.Errorf("decode login response: %w", err)
 	}
 	c.sessionID = data.APISessionID
+	c.sessionUsed = time.Now()
 	return nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newTestClient(t *testing.T, handler func(action string, body []byte) string) *Client {
@@ -43,6 +44,30 @@ func TestLogin(t *testing.T) {
 	}
 	if got := c.session(); got != "SID" {
 		t.Fatalf("session = %q, want SID", got)
+	}
+}
+
+func TestSessionRenewedAfterIdleLimit(t *testing.T) {
+	logins := 0
+	c := newTestClient(t, func(action string, _ []byte) string {
+		logins++
+		return loginOK
+	})
+	ctx := context.Background()
+	for range 2 {
+		if err := c.ensureSession(ctx); err != nil {
+			t.Fatalf("ensureSession: %v", err)
+		}
+	}
+	if logins != 1 {
+		t.Fatalf("logins = %d, want 1 while the session is in use", logins)
+	}
+	c.sessionUsed = time.Now().Add(-sessionMaxIdle)
+	if err := c.ensureSession(ctx); err != nil {
+		t.Fatalf("ensureSession: %v", err)
+	}
+	if logins != 2 {
+		t.Fatalf("logins = %d, want 2 after the idle limit", logins)
 	}
 }
 
