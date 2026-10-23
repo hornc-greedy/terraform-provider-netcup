@@ -116,28 +116,18 @@ func (r *failoverIPRouteResource) Read(ctx context.Context, req resource.ReadReq
 	id := int(state.FailoverIPID.ValueInt64())
 	// A null ipv6 in state means IPv4 and must match the default.
 	state.IPv6 = types.BoolValue(state.IPv6.ValueBool())
-	if state.IPv6.ValueBool() {
-		ips, err := r.client.ListFailoverIPv6(ctx)
-		if err != nil {
-			resp.Diagnostics.AddError("Error reading failover IPv6", err.Error())
-			return
-		}
-		for _, ip := range ips {
-			if ip.ID == id && ip.Server != nil {
-				state.ServerID = types.Int64Value(int64(ip.Server.ID))
-			}
-		}
-	} else {
-		ips, err := r.client.ListFailoverIPv4(ctx)
-		if err != nil {
-			resp.Diagnostics.AddError("Error reading failover IPv4", err.Error())
-			return
-		}
-		for _, ip := range ips {
-			if ip.ID == id && ip.Server != nil {
-				state.ServerID = types.Int64Value(int64(ip.Server.ID))
-			}
-		}
+	found, server, err := r.client.FailoverRoute(ctx, id, state.IPv6.ValueBool())
+	if err != nil {
+		resp.Diagnostics.AddError("Error reading failover IP", err.Error())
+		return
+	}
+	if !found {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	state.ServerID = types.Int64Null()
+	if server != nil {
+		state.ServerID = types.Int64Value(int64(server.ID))
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }

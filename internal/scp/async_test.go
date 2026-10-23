@@ -72,6 +72,29 @@ func TestTaskResponseErrorIsReported(t *testing.T) {
 	}
 }
 
+func TestFailoverRoute(t *testing.T) {
+	c := sshTestClient(t, func(method, path string, _ []byte) (int, string) {
+		if method == "GET" && path == "/users/4242/failoverips/v4" {
+			return 200, `[{"id":1,"server":{"id":5}},{"id":2,"server":null}]`
+		}
+		t.Fatalf("unexpected %s %s", method, path)
+		return 500, ""
+	})
+	ctx := context.Background()
+	found, server, err := c.FailoverRoute(ctx, 1, false)
+	if err != nil || !found || server == nil || server.ID != 5 {
+		t.Fatalf("routed: found=%v server=%v err=%v", found, server, err)
+	}
+	found, server, err = c.FailoverRoute(ctx, 2, false)
+	if err != nil || !found || server != nil {
+		t.Fatalf("unrouted: found=%v server=%v err=%v", found, server, err)
+	}
+	found, _, err = c.FailoverRoute(ctx, 3, false)
+	if err != nil || found {
+		t.Fatalf("missing: found=%v err=%v", found, err)
+	}
+}
+
 func TestRouteFailoverSendsServerID(t *testing.T) {
 	var body string
 	c := sshTestClient(t, func(method, path string, b []byte) (int, string) {

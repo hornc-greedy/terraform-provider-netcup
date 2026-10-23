@@ -7,26 +7,27 @@ import (
 	"strconv"
 )
 
+// ServerMinimal mirrors the ServerMinimal schema (subset).
+type ServerMinimal struct {
+	ID int `json:"id"`
+}
+
 // FailoverIPv4 mirrors the FailoverIPv4 schema (subset).
 type FailoverIPv4 struct {
-	ID         int    `json:"id"`
-	IP         string `json:"ip"`
-	CIDRSuffix int    `json:"cidrSuffix"`
-	Editable   bool   `json:"editable"`
-	Server     *struct {
-		ID int `json:"id"`
-	} `json:"server"`
+	ID         int            `json:"id"`
+	IP         string         `json:"ip"`
+	CIDRSuffix int            `json:"cidrSuffix"`
+	Editable   bool           `json:"editable"`
+	Server     *ServerMinimal `json:"server"`
 }
 
 // FailoverIPv6 mirrors the FailoverIPv6 schema (subset).
 type FailoverIPv6 struct {
-	ID                  int    `json:"id"`
-	NetworkPrefix       string `json:"networkPrefix"`
-	NetworkPrefixLength int    `json:"networkPrefixLength"`
-	Editable            bool   `json:"editable"`
-	Server              *struct {
-		ID int `json:"id"`
-	} `json:"server"`
+	ID                  int            `json:"id"`
+	NetworkPrefix       string         `json:"networkPrefix"`
+	NetworkPrefixLength int            `json:"networkPrefixLength"`
+	Editable            bool           `json:"editable"`
+	Server              *ServerMinimal `json:"server"`
 }
 
 func foBase(userID int, v6 bool) string {
@@ -61,6 +62,33 @@ func (c *Client) ListFailoverIPv6(ctx context.Context) ([]FailoverIPv6, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// FailoverRoute returns whether the failover IP still exists and the server it
+// is routed to, which is nil if there is none.
+func (c *Client) FailoverRoute(ctx context.Context, id int, v6 bool) (bool, *ServerMinimal, error) {
+	if v6 {
+		ips, err := c.ListFailoverIPv6(ctx)
+		if err != nil {
+			return false, nil, err
+		}
+		for _, ip := range ips {
+			if ip.ID == id {
+				return true, ip.Server, nil
+			}
+		}
+		return false, nil, nil
+	}
+	ips, err := c.ListFailoverIPv4(ctx)
+	if err != nil {
+		return false, nil, err
+	}
+	for _, ip := range ips {
+		if ip.ID == id {
+			return true, ip.Server, nil
+		}
+	}
+	return false, nil, nil
 }
 
 // RouteFailover routes a failover IP (by its id) to a server and waits for the
