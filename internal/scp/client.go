@@ -25,6 +25,8 @@ const (
 	DefaultTokenURL = "https://www.servercontrolpanel.de/realms/scp/protocol/openid-connect/token"
 	// clientID is the public OAuth2 client; no secret is required.
 	clientID = "scp"
+	// maxAttempts bounds how often one request is sent.
+	maxAttempts = 3
 )
 
 // Client talks to the SCP REST API. Authentication uses an offline refresh
@@ -38,6 +40,9 @@ type Client struct {
 	TokenURL     string
 	UserinfoURL  string
 	HTTPClient   *http.Client
+	// RetryDelay is the wait before the first retry and doubles for each further
+	// one.
+	RetryDelay time.Duration
 
 	mu          sync.Mutex
 	accessToken string
@@ -52,6 +57,7 @@ func New(refreshToken string) *Client {
 		BaseURL:      DefaultBaseURL,
 		TokenURL:     DefaultTokenURL,
 		HTTPClient:   &http.Client{Timeout: 30 * time.Second},
+		RetryDelay:   time.Second,
 	}
 }
 
@@ -122,42 +128,78 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 
 // send is do with an explicit request content type.
 func (c *Client) send(ctx context.Context, method, path, contentType string, body, out any) error {
-	token, err := c.ensureToken(ctx)
-	if err != nil {
-		return err
-	}
+	return c.sendTo(ctx, method, c.BaseURL+path, contentType, body, out)
+}
 
-	var reader io.Reader
+// sendTo retries idempotent requests after a transport error or a 5xx.
+func (c *Client) sendTo(ctx context.Context, method, target, contentType string, body, out any) error {
+	var payload []byte
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
 			return err
 		}
-		reader = bytes.NewReader(b)
+		payload = b
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, reader)
+	delay := c.RetryDelay
+	for attempt := 1; ; attempt++ {
+		token, err := c.ensureToken(ctx)
+		if err != nil {
+			return err
+		}
+		status, raw, err := c.request(ctx, method, target, contentType, token, payload)
+		if attempt < maxAttempts && ctx.Err() == nil && retryable(method, status, err) {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+			delay *= 2
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		return decodeResponse(method, target, status, raw, out)
+	}
+}
+
+// retryable reports whether sending the request again has no further effect.
+func retryable(method string, status int, err error) bool {
+	idempotent := method == http.MethodGet || method == http.MethodPut || method == http.MethodDelete
+	return idempotent && (err != nil || status >= http.StatusInternalServerError)
+}
+
+// request sends one HTTP request.
+func (c *Client) request(ctx context.Context, method, target, contentType, token string, payload []byte) (int, []byte, error) {
+	req, err := http.NewRequestWithContext(ctx, method, target, bytes.NewReader(payload))
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
-	if body != nil {
+	if payload != nil {
 		req.Header.Set("Content-Type", contentType)
 	}
 
 	res, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
 	defer res.Body.Close()
 	raw, err := io.ReadAll(res.Body)
 	if err != nil {
-		return fmt.Errorf("read %s %s response: %w", method, path, err)
+		return 0, nil, fmt.Errorf("read %s %s response: %w", method, target, err)
 	}
+	return res.StatusCode, raw, nil
+}
 
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		apiErr := &APIError{Status: res.StatusCode}
+// decodeResponse returns an *APIError for a non-2xx response and otherwise
+// decodes the body into out, if out is non-nil and there is a body.
+func decodeResponse(method, target string, status int, raw []byte, out any) error {
+	if status < 200 || status >= 300 {
+		apiErr := &APIError{Status: status}
 		var parsed struct {
 			Code    string `json:"code"`
 			Message string `json:"message"`
@@ -186,7 +228,7 @@ func (c *Client) send(ctx context.Context, method, path, contentType string, bod
 
 	if out != nil && len(bytes.TrimSpace(raw)) > 0 {
 		if err := json.Unmarshal(raw, out); err != nil {
-			return fmt.Errorf("decode %s %s response: %w", method, path, err)
+			return fmt.Errorf("decode %s %s response: %w", method, target, err)
 		}
 	}
 	return nil

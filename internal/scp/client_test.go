@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // newTestClient returns a Client for an httptest server. The handler routes
@@ -36,6 +37,7 @@ func newTestClient(t *testing.T, api func(method, path string, body []byte) (int
 	c := New("refresh-token")
 	c.BaseURL = srv.URL
 	c.TokenURL = srv.URL + "/token"
+	c.RetryDelay = time.Millisecond
 	return c
 }
 
@@ -155,6 +157,136 @@ func TestGetServerReadsExportCount(t *testing.T) {
 	}
 	if s.ExportCount != 3 {
 		t.Fatalf("ExportCount = %d, want 3", s.ExportCount)
+	}
+}
+
+func TestRetriesIdempotentRequests(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+		for _, status := range []int{500, 503} {
+			calls := 0
+			c := newTestClient(t, func(_, _ string, _ []byte) (int, string) {
+				calls++
+				if calls < 3 {
+					return status, `{"message":"busy"}`
+				}
+				return 200, `{}`
+			})
+			if err := c.do(context.Background(), method, "/x", nil, nil); err != nil {
+				t.Fatalf("%s %d: %v", method, status, err)
+			}
+			if calls != 3 {
+				t.Fatalf("%s %d: calls = %d, want 3", method, status, calls)
+			}
+		}
+	}
+}
+
+// dropConnectionServer closes the connection of the first dropped requests.
+func dropConnectionServer(t *testing.T, dropped int) (*Client, *int) {
+	t.Helper()
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			_, _ = io.WriteString(w, `{"access_token":"AT","expires_in":300}`)
+			return
+		}
+		calls++
+		if calls <= dropped {
+			conn, _, err := http.NewResponseController(w).Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			_ = conn.Close()
+			return
+		}
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	t.Cleanup(srv.Close)
+	c := New("refresh-token")
+	c.BaseURL = srv.URL
+	c.TokenURL = srv.URL + "/token"
+	c.RetryDelay = time.Millisecond
+	return c, &calls
+}
+
+func TestRetriesTransportErrors(t *testing.T) {
+	c, calls := dropConnectionServer(t, 1)
+	if err := c.do(context.Background(), http.MethodGet, "/x", nil, nil); err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	if *calls != 2 {
+		t.Fatalf("calls = %d, want 2", *calls)
+	}
+}
+
+func TestPostIsNotRetriedOnTransportError(t *testing.T) {
+	c, calls := dropConnectionServer(t, 1)
+	if err := c.do(context.Background(), http.MethodPost, "/x", struct{}{}, nil); err == nil {
+		t.Fatal("expected error")
+	}
+	if *calls != 1 {
+		t.Fatalf("calls = %d, want 1", *calls)
+	}
+}
+
+func TestCancelStopsRetrying(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	c := newTestClient(t, func(_, _ string, _ []byte) (int, string) {
+		calls++
+		cancel()
+		return 503, `{"message":"busy"}`
+	})
+	c.RetryDelay = time.Hour
+	if err := c.do(ctx, http.MethodGet, "/x", nil, nil); err == nil {
+		t.Fatal("expected error")
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+}
+
+func TestRetriesStopAfterMaxAttempts(t *testing.T) {
+	calls := 0
+	c := newTestClient(t, func(method, path string, _ []byte) (int, string) {
+		calls++
+		return 503, `{"message":"busy"}`
+	})
+	_, err := c.GetReverseDNS(context.Background(), "203.0.113.10")
+	if apiErr, ok := err.(*APIError); !ok || apiErr.Status != 503 {
+		t.Fatalf("err = %v, want 503", err)
+	}
+	if calls != maxAttempts {
+		t.Fatalf("calls = %d, want %d", calls, maxAttempts)
+	}
+}
+
+func TestPostIsNotRetriedOnServerError(t *testing.T) {
+	calls := 0
+	c := newTestClient(t, func(method, path string, _ []byte) (int, string) {
+		calls++
+		return 500, `{"message":"boom"}`
+	})
+	if err := c.SetReverseDNS(context.Background(), "203.0.113.10", "mail.example.com"); err == nil {
+		t.Fatal("expected error")
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+}
+
+func TestTooManyRequestsIsNotRetried(t *testing.T) {
+	calls := 0
+	c := newTestClient(t, func(_, _ string, _ []byte) (int, string) {
+		calls++
+		return 429, `{"message":"slow down"}`
+	})
+	if err := c.do(context.Background(), http.MethodGet, "/x", nil, nil); err == nil {
+		t.Fatal("expected error")
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
 	}
 }
 
