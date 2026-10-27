@@ -12,6 +12,10 @@ test:
 testacc:
 	TF_ACC=1 go test ./... -timeout 120m
 
+# Run acceptance tests against the mock API. Needs no credentials.
+testmock:
+	TF_ACC=1 go test ./internal/provider -run TestMock -timeout 20m
+
 # Static analysis.
 lint:
 	golangci-lint run ./...
@@ -20,4 +24,4 @@ lint:
 generate:
 	go generate ./...
 
-.PHONY: build test testacc lint generate
+.PHONY: build test testmock testacc lint generate
