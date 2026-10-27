@@ -249,3 +249,22 @@ func decodeResponse(method, target string, status int, raw []byte, out any) erro
 	}
 	return nil
 }
+
+// pageSize is the limit of one page of a limit/offset list endpoint.
+const pageSize = 100
+
+// listAll reads every page of a limit/offset list endpoint. It stops at an empty
+// page, so a server-side limit below pageSize loses no entries.
+func listAll[T any](ctx context.Context, c *Client, path string) ([]T, error) {
+	var all []T
+	for {
+		var page []T
+		if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s?limit=%d&offset=%d", path, pageSize, len(all)), nil, &page); err != nil {
+			return nil, err
+		}
+		if len(page) == 0 {
+			return all, nil
+		}
+		all = append(all, page...)
+	}
+}

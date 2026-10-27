@@ -49,11 +49,7 @@ func (c *Client) ListFirewallPolicies(ctx context.Context) ([]FirewallPolicy, er
 	if err != nil {
 		return nil, err
 	}
-	var out []FirewallPolicy
-	if err := c.do(ctx, "GET", base, nil, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return listAll[FirewallPolicy](ctx, c, base)
 }
 
 // GetFirewallPolicy returns one policy by id.

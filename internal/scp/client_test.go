@@ -50,8 +50,11 @@ func ifQuery(q string) string {
 
 func TestTokenRefreshAndAuth(t *testing.T) {
 	c := newTestClient(t, func(method, path string, _ []byte) (int, string) {
-		if method == "GET" && path == "/servers" {
+		switch {
+		case method == "GET" && path == "/servers?limit=100&offset=0":
 			return 200, `[{"id":1,"name":"v1","hostname":"h","nickname":"n","disabled":false}]`
+		case method == "GET" && path == "/servers?limit=100&offset=1":
+			return 200, `[]`
 		}
 		t.Fatalf("unexpected %s %s", method, path)
 		return 500, ""
@@ -358,6 +361,30 @@ func TestRepeatedUnauthorizedIsReported(t *testing.T) {
 	}
 	if requests != 2 {
 		t.Fatalf("requests = %d, want 2", requests)
+	}
+}
+
+func TestListAllReadsEveryPage(t *testing.T) {
+	var requested []string
+	c := newTestClient(t, func(_, path string, _ []byte) (int, string) {
+		requested = append(requested, path)
+		switch {
+		case strings.HasSuffix(path, "offset=0"):
+			return 200, `[{"id":1},{"id":2}]`
+		case strings.HasSuffix(path, "offset=2"):
+			return 200, `[{"id":3}]`
+		}
+		return 200, `[]`
+	})
+	servers, err := c.ListServers(context.Background())
+	if err != nil {
+		t.Fatalf("ListServers: %v", err)
+	}
+	if len(servers) != 3 {
+		t.Fatalf("got %d servers", len(servers))
+	}
+	if len(requested) != 3 || !strings.HasSuffix(requested[2], "offset=3") {
+		t.Fatalf("requests: %v", requested)
 	}
 }
 
