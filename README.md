@@ -133,6 +133,14 @@ generated from the schema descriptions and `examples/` with
 
 ### Tests
 
+Acceptance tests run against a mock of the netcup APIs in `internal/mockapi`. It
+keeps state, checks SCP and netcup API requests and responses against the OpenAPI
+specifications in `internal/mockapi/spec` and needs no credentials.
+
+```shell
+make testmock
+```
+
 Acceptance tests create **real** resources and are gated behind `TF_ACC=1` and
 the `NETCUP_*` environment variables. Run them only against a dedicated test
 account or domain:
