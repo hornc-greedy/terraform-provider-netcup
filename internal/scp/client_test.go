@@ -270,6 +270,22 @@ func TestTokenRenewalDoesNotUseUpRetries(t *testing.T) {
 	}
 }
 
+func TestUserIDIsRetried(t *testing.T) {
+	calls := 0
+	c := newTestClient(t, func(_, path string, _ []byte) (int, string) {
+		calls++
+		if calls == 1 {
+			return 503, `{"message":"busy"}`
+		}
+		return 200, `{"id":"4242"}`
+	})
+	c.UserinfoURL = c.BaseURL + "/userinfo"
+	id, err := c.UserID(context.Background())
+	if err != nil || id != 4242 {
+		t.Fatalf("UserID: %d %v", id, err)
+	}
+}
+
 func TestRetriesStopAfterMaxAttempts(t *testing.T) {
 	calls := 0
 	c := newTestClient(t, func(method, path string, _ []byte) (int, string) {

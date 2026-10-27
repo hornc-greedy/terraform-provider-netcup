@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 )
 
@@ -21,30 +20,12 @@ func (c *Client) UserID(ctx context.Context) (int, error) {
 	}
 	c.mu.Unlock()
 
-	token, err := c.ensureToken(ctx)
-	if err != nil {
-		return 0, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.UserinfoURL, nil)
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	res, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer res.Body.Close()
-	body, _ := io.ReadAll(res.Body)
-	if res.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("userinfo failed (http %d)", res.StatusCode)
-	}
-	// netcup returns id as a JSON string; accept string or number defensively.
+	// netcup returns id as a JSON string; json.Number accepts it.
 	var parsed struct {
 		ID json.Number `json:"id"`
 	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return 0, fmt.Errorf("decode userinfo: %w", err)
+	if err := c.sendTo(ctx, http.MethodGet, c.UserinfoURL, "", nil, &parsed); err != nil {
+		return 0, fmt.Errorf("userinfo: %w", err)
 	}
 	id, err := parsed.ID.Int64()
 	if err != nil {
