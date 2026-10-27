@@ -25,7 +25,8 @@ const (
 	DefaultTokenURL = "https://www.servercontrolpanel.de/realms/scp/protocol/openid-connect/token"
 	// clientID is the public OAuth2 client; no secret is required.
 	clientID = "scp"
-	// maxAttempts bounds how often one request is sent.
+	// maxAttempts bounds how often one request is sent, not counting the repeat
+	// after a token renewal.
 	maxAttempts = 3
 )
 
@@ -131,7 +132,8 @@ func (c *Client) send(ctx context.Context, method, path, contentType string, bod
 	return c.sendTo(ctx, method, c.BaseURL+path, contentType, body, out)
 }
 
-// sendTo retries idempotent requests after a transport error or a 5xx.
+// sendTo requests a new token once after a 401 and retries idempotent requests
+// after a transport error or a 5xx.
 func (c *Client) sendTo(ctx context.Context, method, target, contentType string, body, out any) error {
 	var payload []byte
 	if body != nil {
@@ -143,12 +145,19 @@ func (c *Client) sendTo(ctx context.Context, method, target, contentType string,
 	}
 
 	delay := c.RetryDelay
+	tokenRenewed := false
 	for attempt := 1; ; attempt++ {
 		token, err := c.ensureToken(ctx)
 		if err != nil {
 			return err
 		}
 		status, raw, err := c.request(ctx, method, target, contentType, token, payload)
+		if status == http.StatusUnauthorized && !tokenRenewed {
+			c.dropToken()
+			tokenRenewed = true
+			attempt--
+			continue
+		}
 		if attempt < maxAttempts && ctx.Err() == nil && retryable(method, status, err) {
 			select {
 			case <-ctx.Done():
@@ -169,6 +178,13 @@ func (c *Client) sendTo(ctx context.Context, method, target, contentType string,
 func retryable(method string, status int, err error) bool {
 	idempotent := method == http.MethodGet || method == http.MethodPut || method == http.MethodDelete
 	return idempotent && (err != nil || status >= http.StatusInternalServerError)
+}
+
+// dropToken makes the next request fetch a new access token.
+func (c *Client) dropToken() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.accessToken = ""
 }
 
 // request sends one HTTP request.

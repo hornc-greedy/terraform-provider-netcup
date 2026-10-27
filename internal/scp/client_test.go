@@ -247,6 +247,26 @@ func TestCancelStopsRetrying(t *testing.T) {
 	}
 }
 
+func TestTokenRenewalDoesNotUseUpRetries(t *testing.T) {
+	calls := 0
+	c := newTestClient(t, func(_, _ string, _ []byte) (int, string) {
+		calls++
+		switch calls {
+		case 1:
+			return 401, ``
+		case 2, 3:
+			return 503, `{"message":"busy"}`
+		}
+		return 200, `{}`
+	})
+	if err := c.do(context.Background(), http.MethodGet, "/x", nil, nil); err != nil {
+		t.Fatalf("do: %v", err)
+	}
+	if calls != 4 {
+		t.Fatalf("calls = %d, want 4", calls)
+	}
+}
+
 func TestRetriesStopAfterMaxAttempts(t *testing.T) {
 	calls := 0
 	c := newTestClient(t, func(method, path string, _ []byte) (int, string) {
@@ -287,6 +307,57 @@ func TestTooManyRequestsIsNotRetried(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("calls = %d, want 1", calls)
+	}
+}
+
+func TestTokenRenewedAfterUnauthorized(t *testing.T) {
+	tokens := 0
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			tokens++
+			_, _ = io.WriteString(w, `{"access_token":"AT","expires_in":300}`)
+			return
+		}
+		requests++
+		if requests == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = io.WriteString(w, `{"rdns":"mail.example.com"}`)
+	}))
+	t.Cleanup(srv.Close)
+	c := New("refresh-token")
+	c.BaseURL = srv.URL
+	c.TokenURL = srv.URL + "/token"
+	if _, err := c.GetReverseDNS(context.Background(), "203.0.113.10"); err != nil {
+		t.Fatalf("GetReverseDNS: %v", err)
+	}
+	if tokens != 2 || requests != 2 {
+		t.Fatalf("tokens = %d, requests = %d, want 2 and 2", tokens, requests)
+	}
+}
+
+func TestRepeatedUnauthorizedIsReported(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			_, _ = io.WriteString(w, `{"access_token":"AT","expires_in":300}`)
+			return
+		}
+		requests++
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+	c := New("refresh-token")
+	c.BaseURL = srv.URL
+	c.TokenURL = srv.URL + "/token"
+	_, err := c.GetReverseDNS(context.Background(), "203.0.113.10")
+	if apiErr, ok := err.(*APIError); !ok || apiErr.Status != http.StatusUnauthorized {
+		t.Fatalf("err = %v, want 401", err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
 	}
 }
 
