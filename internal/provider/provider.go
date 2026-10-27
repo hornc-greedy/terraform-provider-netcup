@@ -43,6 +43,7 @@ type netcupProviderModel struct {
 	APIKey         types.String `tfsdk:"api_key"`
 	APIPassword    types.String `tfsdk:"api_password"`
 	SCPRefreshTok  types.String `tfsdk:"scp_refresh_token"`
+	SCPBaseURL     types.String `tfsdk:"scp_base_url"`
 }
 
 func (p *netcupProvider) Metadata(_ context.Context, _ fwprov.MetadataRequest, resp *fwprov.MetadataResponse) {
@@ -77,6 +78,10 @@ func (p *netcupProvider) Schema(_ context.Context, _ fwprov.SchemaRequest, resp 
 					"Required only for SCP resources/data sources (reverse DNS, servers). " +
 					"May also be set via `NETCUP_SCP_REFRESH_TOKEN`.",
 			},
+			"scp_base_url": provschema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "SCP host, by default `" + scp.DefaultServer + "`. May also be set via `NETCUP_SCP_BASE_URL`.",
+			},
 		},
 	}
 }
@@ -98,7 +103,7 @@ func (p *netcupProvider) Configure(ctx context.Context, req fwprov.ConfigureRequ
 		data.CCP = client.New(customer, apiKey, apiPassword)
 	}
 	if scpToken != "" {
-		data.SCP = scp.New(scpToken)
+		data.SCP = scp.NewForServer(firstNonEmpty(cfg.SCPBaseURL.ValueString(), os.Getenv("NETCUP_SCP_BASE_URL"), scp.DefaultServer), scpToken)
 	}
 
 	resp.ResourceData = data

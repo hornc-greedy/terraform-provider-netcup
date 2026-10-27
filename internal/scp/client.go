@@ -19,10 +19,8 @@ import (
 )
 
 const (
-	// DefaultBaseURL is the SCP REST API base (note the scp-core prefix).
-	DefaultBaseURL = "https://www.servercontrolpanel.de/scp-core/api/v1"
-	// DefaultTokenURL is the OIDC token endpoint of the scp realm.
-	DefaultTokenURL = "https://www.servercontrolpanel.de/realms/scp/protocol/openid-connect/token"
+	// DefaultServer is the host of the SCP REST API and of its OIDC realm.
+	DefaultServer = "https://www.servercontrolpanel.de"
 	// clientID is the public OAuth2 client; no secret is required.
 	clientID = "scp"
 	// maxAttempts bounds how often one request is sent, not counting the repeat
@@ -51,12 +49,19 @@ type Client struct {
 	userID      int
 }
 
-// New returns a Client for the given offline refresh token.
+// New returns a Client of DefaultServer for the given offline refresh token.
 func New(refreshToken string) *Client {
+	return NewForServer(DefaultServer, refreshToken)
+}
+
+// NewForServer returns a Client of the given SCP host.
+func NewForServer(server, refreshToken string) *Client {
+	realm := server + "/realms/scp/protocol/openid-connect"
 	return &Client{
 		RefreshToken: refreshToken,
-		BaseURL:      DefaultBaseURL,
-		TokenURL:     DefaultTokenURL,
+		BaseURL:      server + "/scp-core/api/v1",
+		TokenURL:     realm + "/token",
+		UserinfoURL:  realm + "/userinfo",
 		HTTPClient:   &http.Client{Timeout: 30 * time.Second},
 		RetryDelay:   time.Second,
 	}

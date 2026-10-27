@@ -388,6 +388,19 @@ func TestListAllReadsEveryPage(t *testing.T) {
 	}
 }
 
+func TestNewForServerDerivesEndpoints(t *testing.T) {
+	c := NewForServer("https://scp.example", "r")
+	if c.BaseURL != "https://scp.example/scp-core/api/v1" {
+		t.Fatalf("BaseURL = %q", c.BaseURL)
+	}
+	if c.TokenURL != "https://scp.example/realms/scp/protocol/openid-connect/token" {
+		t.Fatalf("TokenURL = %q", c.TokenURL)
+	}
+	if c.UserinfoURL != "https://scp.example/realms/scp/protocol/openid-connect/userinfo" {
+		t.Fatalf("UserinfoURL = %q", c.UserinfoURL)
+	}
+}
+
 func TestAPIErrorParsed(t *testing.T) {
 	c := newTestClient(t, func(method, path string, _ []byte) (int, string) {
 		return 422, `{"code":"422","message":"Validation error."}`

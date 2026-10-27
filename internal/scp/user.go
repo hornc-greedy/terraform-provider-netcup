@@ -10,10 +10,6 @@ import (
 	"net/http"
 )
 
-// DefaultUserinfoURL is the OIDC userinfo endpoint of the scp realm. It lives on
-// the realm, not under the API base, so it is requested separately.
-const DefaultUserinfoURL = "https://www.servercontrolpanel.de/realms/scp/protocol/openid-connect/userinfo"
-
 // UserID returns the internal SCP user id (not the customer number), resolved
 // once via /userinfo and cached. Many endpoints are scoped to /users/{userId}.
 func (c *Client) UserID(ctx context.Context) (int, error) {
@@ -29,11 +25,7 @@ func (c *Client) UserID(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	url := c.UserinfoURL
-	if url == "" {
-		url = DefaultUserinfoURL
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.UserinfoURL, nil)
 	if err != nil {
 		return 0, err
 	}
