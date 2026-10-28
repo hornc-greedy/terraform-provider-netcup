@@ -29,6 +29,9 @@ type netcupProvider struct {
 type providerData struct {
 	CCP *client.Client
 	SCP *scp.Client
+
+	// The attribute that keeps an API from being configured while planning.
+	unknownCCP, unknownSCP string
 }
 
 // New returns the provider factory used by main and acceptance tests.
@@ -98,7 +101,17 @@ func (p *netcupProvider) Configure(ctx context.Context, req fwprov.ConfigureRequ
 	apiPassword := firstNonEmpty(cfg.APIPassword.ValueString(), os.Getenv("NETCUP_API_PASSWORD"))
 	scpToken := firstNonEmpty(cfg.SCPRefreshTok.ValueString(), os.Getenv("NETCUP_SCP_REFRESH_TOKEN"))
 
-	data := &providerData{}
+	data := &providerData{
+		unknownCCP: unknownAttribute(
+			knownAttribute{"customer_number", cfg.CustomerNumber, "NETCUP_CUSTOMER_NUMBER"},
+			knownAttribute{"api_key", cfg.APIKey, "NETCUP_API_KEY"},
+			knownAttribute{"api_password", cfg.APIPassword, "NETCUP_API_PASSWORD"},
+		),
+		unknownSCP: unknownAttribute(
+			knownAttribute{"scp_refresh_token", cfg.SCPRefreshTok, "NETCUP_SCP_REFRESH_TOKEN"},
+			knownAttribute{"scp_base_url", cfg.SCPBaseURL, "NETCUP_SCP_BASE_URL"},
+		),
+	}
 	if customer != "" && apiKey != "" && apiPassword != "" {
 		data.CCP = client.New(customer, apiKey, apiPassword)
 	}

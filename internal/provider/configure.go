@@ -4,8 +4,10 @@ package provider
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/client"
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/scp"
@@ -27,13 +29,44 @@ func providerDataFrom(raw any, diags *diag.Diagnostics) *providerData {
 	return data
 }
 
+// knownAttribute is a provider attribute with its environment variable.
+type knownAttribute struct {
+	name  string
+	value types.String
+	env   string
+}
+
+// unknownAttribute returns the first attribute that has no value yet and no
+// environment variable to fall back to.
+func unknownAttribute(attributes ...knownAttribute) string {
+	for _, a := range attributes {
+		if a.value.IsUnknown() && os.Getenv(a.env) == "" {
+			return a.name
+		}
+	}
+	return ""
+}
+
+// addUnknownAttribute reports an API whose attribute is not known while planning.
+func addUnknownAttribute(name string, diags *diag.Diagnostics) bool {
+	if name == "" {
+		return false
+	}
+	diags.AddError("Unknown provider attribute",
+		"This object needs "+name+" while planning. Give it a value known before apply, or remove it and set its environment variable.")
+	return true
+}
+
 // requireCCP returns the CCP client or adds a diagnostic if it is not
 // configured.
 func requireCCP(data *providerData, diags *diag.Diagnostics) *client.Client {
+	if addUnknownAttribute(data.unknownCCP, diags) {
+		return nil
+	}
 	if data.CCP == nil {
 		diags.AddError(
 			"CCP credentials not configured",
-			"This resource needs the CCP API. Set customer_number, api_key and api_password "+
+			"This object needs the CCP API. Set customer_number, api_key and api_password "+
 				"on the provider (or the NETCUP_* environment variables).",
 		)
 		return nil
@@ -44,10 +77,13 @@ func requireCCP(data *providerData, diags *diag.Diagnostics) *client.Client {
 // requireSCP returns the SCP client or adds a diagnostic if it is not
 // configured.
 func requireSCP(data *providerData, diags *diag.Diagnostics) *scp.Client {
+	if addUnknownAttribute(data.unknownSCP, diags) {
+		return nil
+	}
 	if data.SCP == nil {
 		diags.AddError(
 			"SCP credentials not configured",
-			"This resource needs the SCP REST API. Set scp_refresh_token on the provider "+
+			"This object needs the SCP REST API. Set scp_refresh_token on the provider "+
 				"(or the NETCUP_SCP_REFRESH_TOKEN environment variable).",
 		)
 		return nil

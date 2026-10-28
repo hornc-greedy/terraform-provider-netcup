@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -307,5 +308,55 @@ data "netcup_failover_ips" "all" {}
 			resource.TestCheckResourceAttr("data.netcup_firewall_policies.all", "policies.#", "0"),
 			resource.TestCheckResourceAttr("data.netcup_failover_ips.all", "ipv4.#", "1"),
 		),
+	}))
+}
+
+func TestMockProviderRejectsUnknownAttribute(t *testing.T) {
+	for attribute, object := range map[string]string{
+		"scp_refresh_token": `data "netcup_servers" "test" {}`,
+		"api_key":           `data "netcup_dns_records" "test" { domain = "example.com" }`,
+	} {
+		t.Run(attribute, func(t *testing.T) {
+			// Its environment variable would stand in for the unknown value.
+			t.Setenv("NETCUP_"+strings.ToUpper(attribute), "")
+			resource.Test(t, resource.TestCase{
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Steps: []resource.TestStep{{
+					Config: fmt.Sprintf(`
+resource "terraform_data" "value" {
+  input = "x"
+}
+
+provider "netcup" {
+  %s = terraform_data.value.output
+}
+
+%s
+`, attribute, object),
+					ExpectError: regexp.MustCompile("Unknown provider attribute"),
+				}},
+			})
+		})
+	}
+}
+
+// Another API needs nothing of an attribute that is not known yet.
+func TestMockProviderAllowsUnknownAttributeOfUnusedAPI(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: fmt.Sprintf(`
+resource "terraform_data" "value" {
+  input = "x"
+}
+
+provider "netcup" {
+  scp_refresh_token = %q
+  scp_base_url      = %q
+  api_key           = terraform_data.value.output
+}
+
+data "netcup_servers" "test" {}
+`, mockapi.RefreshToken, m.URL),
+		Check: resource.TestCheckResourceAttrSet("data.netcup_servers.test", "servers.#"),
 	}))
 }
