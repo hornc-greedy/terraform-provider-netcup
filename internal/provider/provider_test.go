@@ -5,6 +5,9 @@ package provider
 import (
 	"context"
 	"os"
+	"slices"
+	"strconv"
+	"strings"
 	"testing"
 
 	fwprov "github.com/hashicorp/terraform-plugin-framework/provider"
@@ -14,49 +17,89 @@ import (
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/scp"
 )
 
-// testAccProtoV6ProviderFactories provides the in-process provider for
-// acceptance tests. Credentials are taken from the NETCUP_* environment
-// variables.
+// testAccProtoV6ProviderFactories provides the in-process provider to a test.
 var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
 	"netcup": providerserver.NewProtocol6WithError(New("test")()),
 }
 
-// testAccPreCheckCCP fails fast unless the CCP (DNS) credentials and a
-// disposable test domain are configured.
-func testAccPreCheckCCP(t *testing.T) {
+// testAccPreCheckCCP skips the test unless credentials and a domain explicitly
+// meant for live tests are set, and returns the domain.
+func testAccPreCheckCCP(t *testing.T) string {
 	t.Helper()
-	for _, k := range []string{
-		"NETCUP_CUSTOMER_NUMBER",
-		"NETCUP_API_KEY",
-		"NETCUP_API_PASSWORD",
-		"NETCUP_TEST_DOMAIN",
+	for live, normal := range map[string]string{
+		"NETCUP_TEST_CUSTOMER_NUMBER": "NETCUP_CUSTOMER_NUMBER",
+		"NETCUP_TEST_API_KEY":         "NETCUP_API_KEY",
+		"NETCUP_TEST_API_PASSWORD":    "NETCUP_API_PASSWORD",
 	} {
-		if os.Getenv(k) == "" {
-			t.Fatalf("%s must be set for CCP acceptance tests", k)
+		value := os.Getenv(live)
+		if value == "" {
+			t.Skipf("%s not set", live)
 		}
+		t.Setenv(normal, value)
 	}
+	domain := os.Getenv("NETCUP_TEST_DOMAIN")
+	if domain == "" {
+		t.Skip("NETCUP_TEST_DOMAIN not set")
+	}
+	return domain
 }
 
-// testAccPreCheckSCP fails fast unless the SCP refresh token is configured.
+// liveServerNickname is the prefix a server's nickname must have before a live
+// test may change it.
+const liveServerNickname = "netcup-provider-live-test"
+
+// testAccPreCheckSCP skips the test unless a token explicitly meant for live tests
+// is set, so that a token of the normal environment is never used.
 func testAccPreCheckSCP(t *testing.T) {
 	t.Helper()
-	if os.Getenv("NETCUP_SCP_REFRESH_TOKEN") == "" {
-		t.Fatal("NETCUP_SCP_REFRESH_TOKEN must be set for SCP acceptance tests")
+	token := os.Getenv("NETCUP_TEST_SCP_REFRESH_TOKEN")
+	if token == "" {
+		t.Skip("NETCUP_TEST_SCP_REFRESH_TOKEN not set")
 	}
+	t.Setenv("NETCUP_SCP_REFRESH_TOKEN", token)
+	t.Setenv("NETCUP_SCP_BASE_URL", "")
 }
 
-// testAccPreCheckEnv skips the test unless every given variable is set. It
-// gates tests that change a real server, so they only run on explicit opt-in.
-func testAccPreCheckEnv(t *testing.T, keys ...string) {
+// testAccLiveAccount skips a live test without TF_ACC or the token and fails it
+// unless every server of the account has the nickname prefix liveServerNickname.
+func testAccLiveAccount(t *testing.T) []scp.Server {
 	t.Helper()
-	for _, k := range keys {
-		if os.Getenv(k) == "" {
-			t.Skipf("%s not set", k)
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("TF_ACC not set")
+	}
+	testAccPreCheckSCP(t)
+	servers, err := testAccSCPClient().ListServers(context.Background())
+	if err != nil {
+		t.Fatalf("list servers: %v", err)
+	}
+	for _, server := range servers {
+		if !strings.HasPrefix(server.Nickname, liveServerNickname) {
+			t.Fatalf("server %d has nickname %q, a live test needs the prefix %q on every server of the account", server.ID, server.Nickname, liveServerNickname)
 		}
 	}
+	return servers
 }
 
-// testAccSCPClient returns an SCP client for CheckDestroy functions.
+// testAccLiveServerID returns the server a live test may change. It checks the
+// account like testAccLiveAccount and skips the test unless a server is set.
+func testAccLiveServerID(t *testing.T) string {
+	t.Helper()
+	servers := testAccLiveAccount(t)
+	id := os.Getenv("NETCUP_TEST_SERVER_ID")
+	if id == "" {
+		t.Skip("NETCUP_TEST_SERVER_ID not set")
+	}
+	serverID, err := strconv.Atoi(id)
+	if err != nil {
+		t.Fatalf("NETCUP_TEST_SERVER_ID: %v", err)
+	}
+	if !slices.ContainsFunc(servers, func(server scp.Server) bool { return server.ID == serverID }) {
+		t.Fatalf("server %s is not in the account of the token", id)
+	}
+	return id
+}
+
+// testAccSCPClient returns an SCP client for checks of live tests.
 func testAccSCPClient() *scp.Client {
 	return scp.New(os.Getenv("NETCUP_SCP_REFRESH_TOKEN"))
 }

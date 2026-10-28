@@ -4,22 +4,10 @@ package provider
 
 import (
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
-
-// testAccPreCheckServer fails fast unless the SCP credentials and a concrete
-// test server id are configured. NETCUP_TEST_SERVER_ID must reference a server
-// that already exists in the account; these data sources only read it.
-func testAccPreCheckServer(t *testing.T) {
-	t.Helper()
-	testAccPreCheckSCP(t)
-	if os.Getenv("NETCUP_TEST_SERVER_ID") == "" {
-		t.Fatal("NETCUP_TEST_SERVER_ID must be set for server data source acceptance tests")
-	}
-}
 
 // TestAccServersDataSource reads the full server list (SCP REST API).
 func TestAccServersDataSource(t *testing.T) {
@@ -37,9 +25,8 @@ func TestAccServersDataSource(t *testing.T) {
 
 // TestAccServerDataSource reads a single server by id.
 func TestAccServerDataSource(t *testing.T) {
-	id := os.Getenv("NETCUP_TEST_SERVER_ID")
+	id := testAccLiveServerID(t)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheckServer(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -64,9 +51,8 @@ data "netcup_server" "test" {
 
 // TestAccServerInterfacesDataSource reads the network interfaces of a server.
 func TestAccServerInterfacesDataSource(t *testing.T) {
-	id := os.Getenv("NETCUP_TEST_SERVER_ID")
+	id := testAccLiveServerID(t)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheckServer(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

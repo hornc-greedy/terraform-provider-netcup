@@ -141,22 +141,31 @@ specifications in `internal/mockapi/spec` and needs no credentials.
 make testmock
 ```
 
-Acceptance tests create **real** resources and are gated behind `TF_ACC=1` and
-the `NETCUP_*` environment variables. Run them only against a dedicated test
-account or domain:
+A mock proves that the provider follows the specification, not that netcup does.
+Live tests against the real API therefore exist as well and create **real**
+resources.
 
 ```shell
-TF_ACC=1 go test ./... -run TestAcc
+make testlive
 ```
 
-The CCP tests need `NETCUP_TEST_DOMAIN`. Tests that change a server are skipped
-unless their variables are set:
+**Never point these tests at a production server.** Use a netcup account of its
+own if you can, because its token cannot reach your other servers. Every test
+with the token, except the server list, fails unless the nickname of every server
+of the account starts with `netcup-provider-live-test`. Set these nicknames
+yourself.
 
-| Variable | Tests | Effect on the server |
+The tests ignore your normal `NETCUP_*` credentials and only read `NETCUP_TEST_*`
+variables. Each test is skipped unless all of its variables are set.
+
+| Variables | Tests | Effect |
 |---|---|---|
-| `NETCUP_TEST_SERVER_ID` | snapshot, server firewall, server settings | offline snapshot of `vda` restarts the server, policies are assigned to the first interface and removed again, nickname and autostart are set |
-| `NETCUP_TEST_RDNS_IP` | reverse DNS (with `NETCUP_TEST_DOMAIN`) | the PTR of the given IP, which must belong to the server, is set, changed and deleted |
-| `NETCUP_TEST_FAILOVER_IP_ID` | failover route (with `NETCUP_TEST_SERVER_ID`) | IPv4 failover IP stays routed to that server |
+| `NETCUP_TEST_SCP_REFRESH_TOKEN` | SSH keys, firewall policies | they are created and deleted |
+| the token | server list | none, it only reads |
+| the token and `NETCUP_TEST_SERVER_ID` | server | an offline snapshot of `vda` restarts the server, policies are assigned to the first interface and removed again, nickname and autostart are set |
+| the token, the server, `NETCUP_TEST_RDNS_IP`, `NETCUP_TEST_RDNS_DOMAIN` | reverse DNS | the PTR of the given IP, which must belong to the server, is set, changed and deleted |
+| the token, the server, `NETCUP_TEST_FAILOVER_IP_ID` | failover route | the unrouted IPv4 failover IP stays routed to the server |
+| `NETCUP_TEST_CUSTOMER_NUMBER`, `NETCUP_TEST_API_KEY`, `NETCUP_TEST_API_PASSWORD`, `NETCUP_TEST_DOMAIN` | CCP DNS | a record is created, changed and deleted, the zone TTL is set to 3600, then to 86400 and stays there |
 
 ### Trying a local build
 

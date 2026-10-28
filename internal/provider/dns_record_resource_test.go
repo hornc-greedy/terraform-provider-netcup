@@ -15,9 +15,8 @@ import (
 )
 
 func TestAccDNSRecordResource(t *testing.T) {
-	domain := os.Getenv("NETCUP_TEST_DOMAIN")
+	domain := testAccPreCheckCCP(t)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheckCCP(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckDNSRecordDestroy(domain),
 		Steps: []resource.TestStep{

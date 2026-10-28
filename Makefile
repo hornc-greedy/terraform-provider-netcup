@@ -8,13 +8,13 @@ build:
 test:
 	go test ./... -timeout 120s
 
-# Run acceptance tests (creates real resources; needs TF_ACC=1 and NETCUP_*).
-testacc:
-	TF_ACC=1 go test ./... -timeout 120m
-
 # Run acceptance tests against the mock API. Needs no credentials.
 testmock:
 	TF_ACC=1 go test ./internal/provider -run TestMock -timeout 20m
+
+# Run acceptance tests against the real API. Needs NETCUP_TEST_*, see README.
+testlive:
+	TF_ACC=1 go test ./internal/provider -run TestAcc -timeout 120m
 
 # Static analysis.
 lint:
@@ -24,4 +24,4 @@ lint:
 generate:
 	go generate ./...
 
-.PHONY: build test testmock testacc lint generate
+.PHONY: build test testmock testlive lint generate

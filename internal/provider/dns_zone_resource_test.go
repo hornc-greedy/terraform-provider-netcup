@@ -4,7 +4,6 @@ package provider
 
 import (
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -13,9 +12,8 @@ import (
 // netcup_dns_zone has no delete, so the test leaves the zone with the last
 // configured ttl.
 func TestAccDNSZoneResource(t *testing.T) {
-	domain := os.Getenv("NETCUP_TEST_DOMAIN")
+	domain := testAccPreCheckCCP(t)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheckCCP(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{ // create

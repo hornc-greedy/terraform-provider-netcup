@@ -17,7 +17,7 @@ const testAccSSHPubKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINb8r6kZ8h0xQ4Yk2m
 
 func TestAccSSHKeyResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheckSCP(t) },
+		PreCheck:                 func() { testAccLiveAccount(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckSSHKeyDestroy,
 		Steps: []resource.TestStep{
@@ -41,7 +41,7 @@ func TestAccSSHKeyResource(t *testing.T) {
 // it changed, because any difference plans a replacement.
 func TestAccSSHKeyTrailingNewline(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheckSCP(t) },
+		PreCheck:                 func() { testAccLiveAccount(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckSSHKeyDestroy,
 		Steps: []resource.TestStep{
@@ -82,7 +82,7 @@ resource "netcup_ssh_key" "test" {
 
 func TestAccSSHKeysDataSource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheckSCP(t) },
+		PreCheck:                 func() { testAccLiveAccount(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

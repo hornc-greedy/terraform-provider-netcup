@@ -16,7 +16,7 @@ import (
 
 func TestAccFirewallPolicyResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheckSCP(t) },
+		PreCheck:                 func() { testAccLiveAccount(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckFirewallPolicyDestroy,
 		Steps: []resource.TestStep{
@@ -47,7 +47,7 @@ func TestAccFirewallPolicyResource(t *testing.T) {
 // that the unsorted addresses and the empty values stay stable.
 func TestAccFirewallPolicyKeepsConfiguredValues(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheckSCP(t) },
+		PreCheck:                 func() { testAccLiveAccount(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckFirewallPolicyDestroy,
 		Steps: []resource.TestStep{
@@ -93,7 +93,7 @@ resource "netcup_firewall_policy" "test" {
 func TestAccFirewallPolicyUpgradeFromV110(t *testing.T) {
 	config := testAccFirewallPolicyConfig("tf-acc-test-upgrade", "web ingress")
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheckSCP(t) },
+		PreCheck:     func() { testAccLiveAccount(t) },
 		CheckDestroy: testAccCheckFirewallPolicyDestroy,
 		Steps: []resource.TestStep{
 			{

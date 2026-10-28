@@ -5,7 +5,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"os"
 	"reflect"
 	"testing"
 
@@ -16,29 +15,25 @@ import (
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/scp"
 )
 
-// The test changes only the nickname and autostart of NETCUP_TEST_SERVER_ID.
-// netcup_server_settings has no delete, so the server keeps the last nickname.
+// The test changes the nickname and autostart of NETCUP_TEST_SERVER_ID. The last
+// nickname stays and keeps the prefix testAccLiveServerID requires.
 func TestAccServerSettingsResource(t *testing.T) {
-	serverID := os.Getenv("NETCUP_TEST_SERVER_ID")
+	serverID := testAccLiveServerID(t)
 	resource.Test(t, resource.TestCase{
-		PreCheck: func() {
-			testAccPreCheckEnv(t, "NETCUP_TEST_SERVER_ID")
-			testAccPreCheckSCP(t)
-		},
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{ // create
-				Config: testAccServerSettingsConfig(serverID, "tf-acc-test-1"),
+				Config: testAccServerSettingsConfig(serverID, liveServerNickname+"-1"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("netcup_server_settings.test", "id", serverID),
-					resource.TestCheckResourceAttr("netcup_server_settings.test", "nickname", "tf-acc-test-1"),
+					resource.TestCheckResourceAttr("netcup_server_settings.test", "nickname", liveServerNickname+"-1"),
 					resource.TestCheckResourceAttr("netcup_server_settings.test", "autostart", "true"),
 					resource.TestCheckResourceAttr("netcup_server_settings.test", "power_state", "ON"),
 				),
 			},
 			{ // update in place
-				Config: testAccServerSettingsConfig(serverID, "tf-acc-test-2"),
-				Check:  resource.TestCheckResourceAttr("netcup_server_settings.test", "nickname", "tf-acc-test-2"),
+				Config: testAccServerSettingsConfig(serverID, liveServerNickname+"-2"),
+				Check:  resource.TestCheckResourceAttr("netcup_server_settings.test", "nickname", liveServerNickname+"-2"),
 			},
 			{ // import (server id)
 				ResourceName:            "netcup_server_settings.test",

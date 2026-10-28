@@ -5,7 +5,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"testing"
 
@@ -14,15 +13,10 @@ import (
 )
 
 // The test assigns policies to the first interface of NETCUP_TEST_SERVER_ID with
-// the firewall inactive. Destroying clears the assignment, so the server must
-// not depend on its current firewall.
+// the firewall inactive. Destroying clears the assignment.
 func TestAccServerFirewallResource(t *testing.T) {
-	serverID := os.Getenv("NETCUP_TEST_SERVER_ID")
+	serverID := testAccLiveServerID(t)
 	resource.Test(t, resource.TestCase{
-		PreCheck: func() {
-			testAccPreCheckEnv(t, "NETCUP_TEST_SERVER_ID")
-			testAccPreCheckSCP(t)
-		},
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckServerFirewallDestroy,
 		Steps: []resource.TestStep{

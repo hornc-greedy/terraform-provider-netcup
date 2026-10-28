@@ -5,7 +5,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"testing"
 
@@ -14,12 +13,8 @@ import (
 )
 
 func TestAccServerSnapshotResource(t *testing.T) {
-	serverID := os.Getenv("NETCUP_TEST_SERVER_ID")
+	serverID := testAccLiveServerID(t)
 	resource.Test(t, resource.TestCase{
-		PreCheck: func() {
-			testAccPreCheckEnv(t, "NETCUP_TEST_SERVER_ID")
-			testAccPreCheckSCP(t)
-		},
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckServerSnapshotDestroy,
 		Steps: []resource.TestStep{
