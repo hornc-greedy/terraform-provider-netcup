@@ -22,6 +22,17 @@ jobs:
       - run: go build ./...
       - run: go test ./... -timeout 120s
 
+  mock:
+    name: Acceptance tests (mock API)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make testmock
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
