@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -54,15 +55,17 @@ type Server struct {
 	// URL is the host to configure the clients with.
 	URL string
 
-	t        testing.TB
-	router   routers.Router
-	scpDoc   *openapi3.T
-	handlers map[string]handler
+	t         testing.TB
+	router    routers.Router
+	dnsRouter routers.Router
+	scpDoc    *openapi3.T
+	handlers  map[string]handler
 
 	mu       sync.Mutex
 	requests []Request
 	faults   []*fault
 	scp      *scpState
+	dns      *cloudDNSState
 }
 
 type fault struct {
@@ -98,12 +101,26 @@ func New(t testing.TB) *Server {
 	if err != nil {
 		t.Fatalf("route scp specification: %v", err)
 	}
-	s := &Server{t: t, router: router, scpDoc: doc, scp: newSCPState()}
+	dnsDoc, err := loadSpec("spec/netcup.json")
+	if err != nil {
+		t.Fatalf("load netcup specification: %v", err)
+	}
+	dnsDoc.Servers = openapi3.Servers{{URL: "/"}}
+	dnsRouter, err := gorillamux.NewRouter(dnsDoc)
+	if err != nil {
+		t.Fatalf("route netcup specification: %v", err)
+	}
+	s := &Server{t: t, router: router, dnsRouter: dnsRouter, scpDoc: doc, scp: newSCPState(), dns: newCloudDNSState()}
 	s.handlers = s.scpHandlers()
+	maps.Copy(s.handlers, s.cloudDNSHandlers())
 	srv := httptest.NewServer(s)
 	t.Cleanup(srv.Close)
 	s.URL = srv.URL
 	return s
+}
+
+func init() {
+	openapi3.DefineStringFormatValidator("uuid", openapi3.NewRegexpFormatValidator(openapi3.FormatOfStringForUUIDOfRFC4122))
 }
 
 func loadSpec(name string) (*openapi3.T, error) {
@@ -179,11 +196,28 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveRealm(w, r, body)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/v1/") {
+		s.serveCloudDNS(w, r, body)
+		return
+	}
 	if r.Header.Get("Authorization") != "Bearer "+accessToken {
 		writeJSON(w, http.StatusUnauthorized, responseError{Code: "error.unauthorized", Message: "missing bearer"})
 		return
 	}
-	s.serveSCP(w, r, body)
+	s.serveSpec(w, r, body, strings.TrimPrefix(r.URL.Path, scpPrefix), s.router)
+}
+
+// serveCloudDNS answers the netcup API. Its messages for a missing or wrong key
+// are those of the real API.
+func (s *Server) serveCloudDNS(w http.ResponseWriter, r *http.Request, body []byte) {
+	switch r.Header.Get("Authorization") {
+	case "Bearer " + APIKey:
+		s.serveSpec(w, r, body, r.URL.Path, s.dnsRouter)
+	case "":
+		writeJSON(w, http.StatusBadRequest, cloudDNSError("authenticationError", "Authentication token was not passed."))
+	default:
+		writeJSON(w, http.StatusBadRequest, cloudDNSError("authenticationError", "Authentication token is not valid or has expired."))
+	}
 }
 
 // serveRealm answers the OIDC endpoints, which no specification covers.
@@ -209,8 +243,7 @@ func (s *Server) serveRealm(w http.ResponseWriter, r *http.Request, body []byte)
 	}
 }
 
-func (s *Server) serveSCP(w http.ResponseWriter, r *http.Request, body []byte) {
-	path := strings.TrimPrefix(r.URL.Path, scpPrefix)
+func (s *Server) serveSpec(w http.ResponseWriter, r *http.Request, body []byte, path string, router routers.Router) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.requests = append(s.requests, Request{
@@ -226,20 +259,13 @@ func (s *Server) serveSCP(w http.ResponseWriter, r *http.Request, body []byte) {
 	checked.URL.Path = path
 	checked.RequestURI = ""
 	checked.Body = io.NopCloser(bytes.NewReader(body))
-	route, params, err := s.router.FindRoute(checked)
+	route, params, err := router.FindRoute(checked)
 	if err != nil {
 		s.t.Errorf("%s %s is not in the specification: %v", r.Method, path, err)
 		w.WriteHeader(http.StatusNotImplemented)
 		return
 	}
 	key := r.Method + " " + route.Path
-
-	// netcup rejects a POST without a body when the Content-Type is missing. The
-	// specification does not mention it.
-	if len(body) == 0 && r.Method == http.MethodPost && r.Header.Get("Content-Type") == "" {
-		writeJSON(w, http.StatusBadRequest, responseError{Code: "error.content.type.invalid", Message: "The HTTP header Content-Type must be 'type/subtype'"})
-		return
-	}
 
 	input := &openapi3filter.RequestValidationInput{
 		Request: checked, PathParams: params, Route: route,
