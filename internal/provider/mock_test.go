@@ -311,6 +311,89 @@ data "netcup_failover_ips" "all" {}
 	}))
 }
 
+// testMockCloudDNSConfig prepends the provider block that points at the CloudDNS
+// part of the mock.
+func testMockCloudDNSConfig(m *mockapi.Server, config string) string {
+	return fmt.Sprintf(`
+provider "netcup" {
+  clouddns_api_key  = %q
+  clouddns_base_url = %q
+}
+`, mockapi.APIKey, m.URL) + config
+}
+
+func TestMockCloudDNSRecordsOnLegacyDomain(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockCloudDNSConfig(m, fmt.Sprintf(`
+data "netcup_clouddns_records" "legacy" {
+  domain_id = %d
+}
+`, mockapi.LegacyDomainID)),
+		ExpectError: regexp.MustCompile(`does not run on CloudDNS`),
+	}))
+}
+
+func TestMockCloudDNSDataSources(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockCloudDNSConfig(m, fmt.Sprintf(`
+data "netcup_clouddns_record_types" "all" {}
+
+data "netcup_clouddns_domains" "all" {}
+
+data "netcup_clouddns_revisions" "all" {
+  domain_id = %[1]d
+}
+
+data "netcup_clouddns_revision" "active" {
+  domain_id = %[1]d
+}
+
+data "netcup_clouddns_records" "active" {
+  domain_id = %[1]d
+}
+
+data "netcup_clouddns_record" "first" {
+  domain_id  = %[1]d
+  identifier = data.netcup_clouddns_records.active.records[0].identifier
+}
+
+data "netcup_clouddns_revision" "by_id" {
+  domain_id  = %[1]d
+  identifier = data.netcup_clouddns_revision.active.identifier
+}
+
+data "netcup_clouddns_records" "by_revision" {
+  domain_id   = %[1]d
+  revision_id = data.netcup_clouddns_revision.active.identifier
+}
+`, mockapi.CloudDNSDomainID)),
+		Check: resource.ComposeAggregateTestCheckFunc(
+			resource.TestCheckResourceAttr("data.netcup_clouddns_domains.all", "domains.#", "2"),
+			resource.TestCheckResourceAttr("data.netcup_clouddns_revisions.all", "revisions.#", "1"),
+			resource.TestCheckResourceAttr("data.netcup_clouddns_revision.active", "state", "active"),
+			resource.TestCheckResourceAttr("data.netcup_clouddns_records.active", "records.0.immutable", "true"),
+			resource.TestCheckResourceAttr("data.netcup_clouddns_record.first", "type", "NS"),
+			resource.TestCheckResourceAttr("data.netcup_clouddns_revision.by_id", "state", "active"),
+			resource.TestCheckResourceAttr("data.netcup_clouddns_records.by_revision", "records.#", "1"),
+			resource.TestCheckResourceAttrSet("data.netcup_clouddns_record_types.all", "types.#"),
+		),
+	}))
+}
+
+func TestMockCloudDNSMissingDomain(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockCloudDNSConfig(m, `
+data "netcup_clouddns_domain" "missing" {
+  fqdn = "missing.example"
+}
+`),
+		ExpectError: regexp.MustCompile(`Domain not found`),
+	}))
+}
+
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {
 	for attribute, object := range map[string]string{
 		"scp_refresh_token": `data "netcup_servers" "test" {}`,

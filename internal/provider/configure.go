@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/client"
+	"github.com/hornc-greedy/terraform-provider-netcup/internal/clouddns"
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/scp"
 )
 
@@ -89,4 +90,21 @@ func requireSCP(data *providerData, diags *diag.Diagnostics) *scp.Client {
 		return nil
 	}
 	return data.SCP
+}
+
+// requireCloudDNS returns the CloudDNS client or adds a diagnostic if it is not
+// configured.
+func requireCloudDNS(data *providerData, diags *diag.Diagnostics) *clouddns.Client {
+	if addUnknownAttribute(data.unknownCloudDNS, diags) {
+		return nil
+	}
+	if data.CloudDNS == nil {
+		diags.AddError(
+			"CloudDNS credentials not configured",
+			"This object needs the netcup API. Set clouddns_api_key on the provider "+
+				"(or the NETCUP_CLOUDDNS_API_KEY environment variable).",
+		)
+		return nil
+	}
+	return data.CloudDNS
 }

@@ -168,6 +168,14 @@ func (p *netcupProvider) DataSources(_ context.Context) []func() datasource.Data
 		NewSSHKeysDataSource,
 		NewFirewallPoliciesDataSource,
 		NewFailoverIPsDataSource,
+		NewCloudDNSDomainDataSource,
+		NewCloudDNSDomainsDataSource,
+		NewCloudDNSRecordDataSource,
+		NewCloudDNSRecordsDataSource,
+		NewCloudDNSRevisionDataSource,
+		NewCloudDNSRevisionsDataSource,
+		NewCloudDNSRecordTypesDataSource,
+		NewCloudDNSAcmeChallengesDataSource,
 	}
 }
 
