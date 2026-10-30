@@ -315,6 +315,7 @@ func TestMockProviderRejectsUnknownAttribute(t *testing.T) {
 	for attribute, object := range map[string]string{
 		"scp_refresh_token": `data "netcup_servers" "test" {}`,
 		"api_key":           `data "netcup_dns_records" "test" { domain = "example.com" }`,
+		"clouddns_api_key":  `data "netcup_clouddns_domains" "test" {}`,
 	} {
 		t.Run(attribute, func(t *testing.T) {
 			// Its environment variable would stand in for the unknown value.

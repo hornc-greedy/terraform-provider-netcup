@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/client"
+	"github.com/hornc-greedy/terraform-provider-netcup/internal/clouddns"
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/scp"
 )
 
@@ -24,14 +25,15 @@ type netcupProvider struct {
 }
 
 // providerData is handed to every resource and data source via Configure.
-// Either client may be nil if its credentials were not supplied; resources that
-// need a particular client must check for it (see requireCCP / requireSCP).
+// Each client may be nil if its credentials were not supplied; resources that need
+// it must check for it (see requireCCP, requireSCP, requireCloudDNS).
 type providerData struct {
-	CCP *client.Client
-	SCP *scp.Client
+	CCP      *client.Client
+	SCP      *scp.Client
+	CloudDNS *clouddns.Client
 
 	// The attribute that keeps an API from being configured while planning.
-	unknownCCP, unknownSCP string
+	unknownCCP, unknownSCP, unknownCloudDNS string
 }
 
 // New returns the provider factory used by main and acceptance tests.
@@ -42,11 +44,13 @@ func New(version string) func() fwprov.Provider {
 }
 
 type netcupProviderModel struct {
-	CustomerNumber types.String `tfsdk:"customer_number"`
-	APIKey         types.String `tfsdk:"api_key"`
-	APIPassword    types.String `tfsdk:"api_password"`
-	SCPRefreshTok  types.String `tfsdk:"scp_refresh_token"`
-	SCPBaseURL     types.String `tfsdk:"scp_base_url"`
+	CustomerNumber  types.String `tfsdk:"customer_number"`
+	APIKey          types.String `tfsdk:"api_key"`
+	APIPassword     types.String `tfsdk:"api_password"`
+	SCPRefreshTok   types.String `tfsdk:"scp_refresh_token"`
+	SCPBaseURL      types.String `tfsdk:"scp_base_url"`
+	CloudDNSAPIKey  types.String `tfsdk:"clouddns_api_key"`
+	CloudDNSBaseURL types.String `tfsdk:"clouddns_base_url"`
 }
 
 func (p *netcupProvider) Metadata(_ context.Context, _ fwprov.MetadataRequest, resp *fwprov.MetadataResponse) {
@@ -56,9 +60,9 @@ func (p *netcupProvider) Metadata(_ context.Context, _ fwprov.MetadataRequest, r
 
 func (p *netcupProvider) Schema(_ context.Context, _ fwprov.SchemaRequest, resp *fwprov.SchemaResponse) {
 	resp.Schema = provschema.Schema{
-		MarkdownDescription: "Manage netcup DNS and domains via the CCP (DomainWebservice) API, " +
-			"and reverse DNS / servers via the SCP REST API. The two APIs use independent " +
-			"credentials; configure whichever you need.",
+		MarkdownDescription: "Manage netcup DNS via the CCP (DomainWebservice) API or the netcup API for " +
+			"domains on CloudDNS, and reverse DNS / servers via the SCP REST API. The APIs use " +
+			"independent credentials; configure whichever you need.",
 		Attributes: map[string]provschema.Attribute{
 			"customer_number": provschema.StringAttribute{
 				Optional:            true,
@@ -84,6 +88,15 @@ func (p *netcupProvider) Schema(_ context.Context, _ fwprov.SchemaRequest, resp 
 			"scp_base_url": provschema.StringAttribute{
 				Optional:            true,
 				MarkdownDescription: "SCP host, by default `" + scp.DefaultServer + "`. May also be set via `NETCUP_SCP_BASE_URL`.",
+			},
+			"clouddns_api_key": provschema.StringAttribute{
+				Optional:            true,
+				Sensitive:           true,
+				MarkdownDescription: "API key of the netcup API for domains on CloudDNS, from the CCP under Master Data > API. May also be set via `NETCUP_CLOUDDNS_API_KEY`.",
+			},
+			"clouddns_base_url": provschema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "Host of the netcup API, by default `" + clouddns.DefaultBaseURL + "`. May also be set via `NETCUP_CLOUDDNS_BASE_URL`.",
 			},
 		},
 	}
@@ -111,12 +124,20 @@ func (p *netcupProvider) Configure(ctx context.Context, req fwprov.ConfigureRequ
 			knownAttribute{"scp_refresh_token", cfg.SCPRefreshTok, "NETCUP_SCP_REFRESH_TOKEN"},
 			knownAttribute{"scp_base_url", cfg.SCPBaseURL, "NETCUP_SCP_BASE_URL"},
 		),
+		unknownCloudDNS: unknownAttribute(
+			knownAttribute{"clouddns_api_key", cfg.CloudDNSAPIKey, "NETCUP_CLOUDDNS_API_KEY"},
+			knownAttribute{"clouddns_base_url", cfg.CloudDNSBaseURL, "NETCUP_CLOUDDNS_BASE_URL"},
+		),
 	}
 	if customer != "" && apiKey != "" && apiPassword != "" {
 		data.CCP = client.New(customer, apiKey, apiPassword)
 	}
 	if scpToken != "" {
 		data.SCP = scp.NewForServer(firstNonEmpty(cfg.SCPBaseURL.ValueString(), os.Getenv("NETCUP_SCP_BASE_URL"), scp.DefaultServer), scpToken)
+	}
+
+	if key := firstNonEmpty(cfg.CloudDNSAPIKey.ValueString(), os.Getenv("NETCUP_CLOUDDNS_API_KEY")); key != "" {
+		data.CloudDNS = clouddns.New(firstNonEmpty(cfg.CloudDNSBaseURL.ValueString(), os.Getenv("NETCUP_CLOUDDNS_BASE_URL"), clouddns.DefaultBaseURL), key)
 	}
 
 	resp.ResourceData = data

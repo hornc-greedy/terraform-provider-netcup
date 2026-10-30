@@ -40,6 +40,9 @@ provider "netcup" {
 
   # SCP REST API, only needed for servers and the other SCP objects.
   scp_refresh_token = var.netcup_scp_refresh_token
+
+  # netcup API, only needed for the netcup_clouddns_* objects.
+  clouddns_api_key = var.netcup_clouddns_api_key
 }
 
 resource "netcup_dns_record" "www" {
@@ -59,8 +62,8 @@ Declare these variables with `sensitive = true` and, with Terraform 1.10 or
 newer, `ephemeral = true`, which keeps them out of plan files. The APIs use
 **independent credentials**, so configure only what you need. The credentials
 can also come from the environment: `NETCUP_CUSTOMER_NUMBER`, `NETCUP_API_KEY`
-and `NETCUP_API_PASSWORD` for the CCP API, and `NETCUP_SCP_REFRESH_TOKEN` for the
-SCP REST API.
+and `NETCUP_API_PASSWORD` for the CCP API, `NETCUP_SCP_REFRESH_TOKEN` for the SCP
+REST API and `NETCUP_CLOUDDNS_API_KEY` for the netcup API.
 
 Every resource supports `terraform import` and, with Terraform 1.5 or newer,
 `import` blocks. The
@@ -70,7 +73,8 @@ lists every object, and for each resource its import ID.
 ### Authentication
 
 Create the CCP API key and API password in the CCP under **Master Data > API**.
-The API password is not your login password.
+The API password is not your login password. The API key of the netcup API for
+CloudDNS is created on the same page.
 
 The SCP REST API needs an offline refresh token, obtained once via the OIDC
 device flow:
