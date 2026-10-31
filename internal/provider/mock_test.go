@@ -5,6 +5,7 @@ package provider
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -320,6 +321,107 @@ provider "netcup" {
   clouddns_base_url = %q
 }
 `, mockapi.APIKey, m.URL) + config
+}
+
+func testMockCloudDNSRecord(rdata string, ttl int) string {
+	return fmt.Sprintf(`
+data "netcup_clouddns_domain" "example" {
+  fqdn = %q
+}
+
+resource "netcup_clouddns_record" "test" {
+  domain_id = data.netcup_clouddns_domain.example.id
+  name      = "www"
+  type      = "A"
+  rdata     = %q
+  ttl       = %d
+}
+`, mockapi.CloudDNSDomain, rdata, ttl)
+}
+
+func TestMockCloudDNSRecord(t *testing.T) {
+	m := mockapi.New(t)
+	const name = "netcup_clouddns_record.test"
+	domainID := strconv.Itoa(mockapi.CloudDNSDomainID)
+	testCase := testMockCase(
+		resource.TestStep{
+			Config: testMockCloudDNSConfig(m, testMockCloudDNSRecord("192.0.2.1", 300)),
+			Check:  resource.TestCheckResourceAttr(name, "id", domainID+"/www/A/192.0.2.1"),
+		},
+		resource.TestStep{
+			Config: testMockCloudDNSConfig(m, testMockCloudDNSRecord("192.0.2.1", 600)),
+			Check:  resource.TestCheckResourceAttr(name, "ttl", "600"),
+		},
+		resource.TestStep{
+			Config: testMockCloudDNSConfig(m, testMockCloudDNSRecord("192.0.2.2", 600)),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr(name, "id", domainID+"/www/A/192.0.2.2"),
+				func(*terraform.State) error {
+					if got := m.RecordRData("www", "A"); !slices.Equal(got, []string{"192.0.2.2"}) {
+						return fmt.Errorf("records of www: %v", got)
+					}
+					return nil
+				},
+			),
+		},
+		resource.TestStep{ResourceName: name, ImportState: true, ImportStateVerify: true},
+	)
+	testCase.CheckDestroy = func(*terraform.State) error {
+		if got := m.RecordRData("www", "A"); len(got) != 0 {
+			return fmt.Errorf("records of www after destroy: %v", got)
+		}
+		return nil
+	}
+	resource.Test(t, testCase)
+}
+
+func TestMockCloudDNSManyRecordsOfOneDomain(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockCloudDNSConfig(m, fmt.Sprintf(`
+resource "netcup_clouddns_record" "test" {
+  count     = 5
+  domain_id = %d
+  name      = "host${count.index}"
+  type      = "A"
+  rdata     = "192.0.2.1"
+  ttl       = 300
+}
+`, mockapi.CloudDNSDomainID)),
+	}))
+}
+
+// netcup storing another form of rdata fails the apply instead of losing the
+// record at the next refresh.
+func TestMockCloudDNSRecordNormalizedRData(t *testing.T) {
+	m := mockapi.New(t)
+	m.NormalizeRData()
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config:      testMockCloudDNSConfig(m, testMockCloudDNSRecord("192.0.2.1", 300)),
+		ExpectError: regexp.MustCompile(`does not hold www A`),
+	}))
+}
+
+// A record changed outside of Terraform has other rdata, so the refresh removes
+// it from state and the plan wants to create it again.
+func TestMockCloudDNSRecordDrift(t *testing.T) {
+	m := mockapi.New(t)
+	config := testMockCloudDNSConfig(m, testMockCloudDNSRecord("192.0.2.1", 300))
+	resource.Test(t, testMockCase(
+		resource.TestStep{Config: config},
+		resource.TestStep{
+			PreConfig:          func() { m.SetRecordRData("www", "A", "192.0.2.9") },
+			Config:             config,
+			PlanOnly:           true,
+			ExpectNonEmptyPlan: true,
+		},
+		// Restores the record, so that the destroy at the end of the test finds it.
+		resource.TestStep{
+			PreConfig: func() { m.SetRecordRData("www", "A", "192.0.2.1") },
+			Config:    config,
+			PlanOnly:  true,
+		},
+	))
 }
 
 func TestMockCloudDNSRecordsOnLegacyDomain(t *testing.T) {

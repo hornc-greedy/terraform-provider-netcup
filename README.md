@@ -99,7 +99,7 @@ The refresh token stays valid as long as it is used at least once every 30 days.
 | Category | Resources | Data sources | Ephemeral | Actions |
 |---|---|---|---|---|
 | CCP DNS | `netcup_dns_record`, `netcup_dns_zone` | `netcup_dns_records` |  |  |
-| CloudDNS |  | `netcup_clouddns_record`, `netcup_clouddns_domain`, `netcup_clouddns_domains`, `netcup_clouddns_records`, `netcup_clouddns_revision`, `netcup_clouddns_revisions`, `netcup_clouddns_record_types`, `netcup_clouddns_acme_challenges` |  |  |
+| CloudDNS | `netcup_clouddns_record` | `netcup_clouddns_record`, `netcup_clouddns_domain`, `netcup_clouddns_domains`, `netcup_clouddns_records`, `netcup_clouddns_revision`, `netcup_clouddns_revisions`, `netcup_clouddns_record_types`, `netcup_clouddns_acme_challenges` |  |  |
 | Servers | `netcup_server_settings` | `netcup_servers`, `netcup_server` |  |  |
 | Interfaces and reverse DNS | `netcup_reverse_dns` | `netcup_server_interfaces` |  |  |
 | Snapshots | `netcup_server_snapshot` |  |  |  |
@@ -121,6 +121,13 @@ The refresh token stays valid as long as it is used at least once every 30 days.
   not implemented.
 - A domain has either the **DNS** tab in the CCP and uses the `netcup_dns_*`
   objects, or the **CloudDNS** tab and uses the `netcup_clouddns_*` objects.
+- These assumptions of the `netcup_clouddns_*` objects are not in the
+  specification:
+  - netcup marks the served revision with the state `active`.
+  - A changeset with `strict` applies `delete` before `create`, so a TTL change
+    can send the same record in both lists.
+  - If netcup stores `rdata` in another form, apply fails with a message naming
+    it.
 
 ## Developing the Provider
 
