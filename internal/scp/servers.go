@@ -10,7 +10,7 @@ import (
 
 // ListServers returns all servers of the account.
 func (c *Client) ListServers(ctx context.Context) ([]Server, error) {
-	return listAll[Server](ctx, c, "/servers")
+	return listAll[Server](ctx, c, "/servers", nil, 0)
 }
 
 // GetServer returns one server by id, including live info fields.

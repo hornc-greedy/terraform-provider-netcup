@@ -4,6 +4,7 @@ package scp
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -212,5 +213,201 @@ func TestMockRetriesInjectedFailures(t *testing.T) {
 	// Two failures, the first page and the empty page that ends the list.
 	if got := len(m.Requests()); got != 4 {
 		t.Fatalf("requests = %d, want 4", got)
+	}
+}
+
+func TestMockServerInfo(t *testing.T) {
+	c, m := mockClient(t)
+	ctx := context.Background()
+	const id = mockapi.DefaultServerID
+	disks, err := c.ListDisks(ctx, id)
+	if err != nil || len(disks) != 1 {
+		t.Fatalf("ListDisks: %v %+v", err, disks)
+	}
+	if disk, err := c.GetDisk(ctx, id, disks[0].Name); err != nil || disk.StorageDriver != "VIRTIO" {
+		t.Fatalf("GetDisk: %v %+v", err, disk)
+	}
+	if drivers, err := c.ListSupportedDrivers(ctx, id); err != nil || len(drivers) != 2 {
+		t.Fatalf("ListSupportedDrivers: %v %v", err, drivers)
+	}
+	if _, err := c.GetGPUDriver(ctx, id); err == nil {
+		t.Fatal("GPU driver of a server without one must fail")
+	}
+	m.EnableGPU()
+	if info, err := c.GetGPUDriver(ctx, id); err != nil || info.PresignedURL == "" || len(info.Headers) != 1 {
+		t.Fatalf("GetGPUDriver: %v %+v", err, info)
+	}
+	if agent, err := c.GetGuestAgent(ctx, id); err != nil || !*agent.GuestAgentAvailable || agent.GuestAgentData == nil {
+		t.Fatalf("GetGuestAgent: %v %+v", err, agent)
+	}
+	m.RemoveGuestAgent()
+	if agent, err := c.GetGuestAgent(ctx, id); err != nil || *agent.GuestAgentAvailable || agent.GuestAgentData != nil {
+		t.Fatalf("GetGuestAgent without data: %v %+v", err, agent)
+	}
+	if available, err := c.GetGuestAgentStatus(ctx, id); err != nil || *available {
+		t.Fatalf("GetGuestAgentStatus after removal: %v %v", err, available)
+	}
+	if flavours, err := c.ListImageFlavours(ctx, id); err != nil || flavours[0].Image == nil || flavours[0].Image.Name == "" {
+		t.Fatalf("ListImageFlavours: %v %+v", err, flavours)
+	}
+	if images, err := c.ListIsoImages(ctx, id); err != nil || images[0].Filename == "" || images[0].Description != nil {
+		t.Fatalf("ListIsoImages: %v %+v", err, images)
+	}
+}
+
+func TestMockServerLogsPaging(t *testing.T) {
+	c, _ := mockClient(t)
+	ctx := context.Background()
+	all, err := c.ListServerLogs(ctx, mockapi.DefaultServerID, Page{})
+	if err != nil || len(all) != 2 {
+		t.Fatalf("all pages: %v %+v", err, all)
+	}
+	one, err := c.ListServerLogs(ctx, mockapi.DefaultServerID, Page{Limit: 1, Offset: 1})
+	if err != nil || len(one) != 1 || one[0].LogKey != all[1].LogKey {
+		t.Fatalf("second entry: %v %+v", err, one)
+	}
+}
+
+func TestMockMetrics(t *testing.T) {
+	c, m := mockClient(t)
+	ctx := context.Background()
+	hours := int64(2)
+	for metric, want := range map[Metric]string{MetricCPU: "cpu0", MetricDisk: "vda", MetricNetwork: "eth0", MetricNetworkPacket: "eth0packets"} {
+		data, err := c.GetMetrics(ctx, mockapi.DefaultServerID, metric, &hours)
+		if err != nil || !strings.Contains(string(data), `"`+want+`"`) {
+			t.Fatalf("%s: %v %s", metric, err, data)
+		}
+		requests := m.Requests()
+		if got := requests[len(requests)-1].Query.Get("hours"); got != "2" {
+			t.Fatalf("%s: hours = %q", metric, got)
+		}
+	}
+	if _, err := c.GetMetrics(ctx, mockapi.DefaultServerID, MetricCPU, nil); err != nil {
+		t.Fatal(err)
+	}
+	requests := m.Requests()
+	if requests[len(requests)-1].Query.Has("hours") {
+		t.Fatal("hours sent although unset")
+	}
+}
+
+func TestMockSnapshotList(t *testing.T) {
+	c, m := mockClient(t)
+	ctx := context.Background()
+	if _, err := c.CreateSnapshot(ctx, mockapi.DefaultServerID, "s", "", "vda", false); err != nil {
+		t.Fatal(err)
+	}
+	snapshots, err := c.ListSnapshots(ctx, mockapi.DefaultServerID)
+	if err != nil || len(snapshots) != 1 || *snapshots[0].Exported || snapshots[0].ExportedSizeInKiB != nil {
+		t.Fatalf("ListSnapshots: %v %+v", err, snapshots)
+	}
+	m.MarkSnapshotExported("s", 2048)
+	snapshots, err = c.ListSnapshots(ctx, mockapi.DefaultServerID)
+	if err != nil || !*snapshots[0].Exported || snapshots[0].ExportedSizeInKiB == nil || *snapshots[0].ExportedSizeInKiB != 2048 {
+		t.Fatalf("exported: %v %+v", err, snapshots)
+	}
+}
+
+func TestMockSnapshotDryRun(t *testing.T) {
+	c, m := mockClient(t)
+	ctx := context.Background()
+	const id = mockapi.DefaultServerID
+	cases := []struct {
+		disk   string
+		online bool
+		code   string
+		body   string
+	}{
+		{"vda", false, "", `{"diskName":"vda","onlineSnapshot":false}`},
+		{"", true, "", `{"onlineSnapshot":true}`},
+		{"", false, "server.snapshot.create.error.disk", `{"onlineSnapshot":false}`},
+		{"vda", true, "server.snapshot.create.error.online.diskselected", `{"diskName":"vda","onlineSnapshot":true}`},
+	}
+	for _, tc := range cases {
+		found, err := c.DryRunSnapshot(ctx, id, tc.disk, tc.online)
+		if err != nil {
+			t.Fatalf("%+v: %v", tc, err)
+		}
+		if tc.code == "" && len(found) != 0 || tc.code != "" && (len(found) != 1 || found[0].Code != tc.code) {
+			t.Fatalf("%+v: errors %+v", tc, found)
+		}
+		requests := m.Requests()
+		if got := requests[len(requests)-1].Body; got != tc.body {
+			t.Fatalf("body = %s, want %s", got, tc.body)
+		}
+	}
+	if _, err := c.DryRunSnapshot(ctx, 1, "vda", false); !IsNotFound(err) {
+		t.Fatalf("missing server: %v", err)
+	}
+}
+
+func TestDryRunRenewsTokenAfterUnauthorized(t *testing.T) {
+	c, m := mockClient(t)
+	ctx := context.Background()
+	m.FailNext(http.MethodPost, fmt.Sprintf("/api/v1/servers/%d/snapshots:dryrun", mockapi.DefaultServerID), http.StatusUnauthorized, 1)
+	if _, err := c.DryRunSnapshot(ctx, mockapi.DefaultServerID, "vda", false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDryRunKeepsMessageOfObjectError(t *testing.T) {
+	c := newTestClient(t, func(_, _ string, _ []byte) (int, string) {
+		return 400, `{"code":"c","message":"boom"}`
+	})
+	_, err := c.DryRunSnapshot(context.Background(), 5, "vda", false)
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestMockTasks(t *testing.T) {
+	c, m := mockClient(t)
+	ctx := context.Background()
+	if err := c.PatchServer(ctx, mockapi.DefaultServerID, map[string]string{"nickname": "web"}); err != nil {
+		t.Fatal(err)
+	}
+	serverID := int64(mockapi.DefaultServerID)
+	finished, name := "FINISHED", "ServerPatch"
+	tasks, err := c.ListTasks(ctx, TaskFilter{Q: &name, ServerID: &serverID, State: &finished}, Page{})
+	if err != nil || len(tasks) != 1 {
+		t.Fatalf("ListTasks: %v %+v", err, tasks)
+	}
+	if tasks[0].FinishedAt == "" || *tasks[0].TaskProgress.ProgressInPercent != 100 || tasks[0].ExecutingUser.Username != "mock" {
+		t.Fatalf("task fields: %+v", tasks[0])
+	}
+	requests := m.Requests()
+	query := requests[len(requests)-2].Query
+	if query.Get("state") != "FINISHED" || query.Get("q") != "ServerPatch" || query.Get("serverId") != fmt.Sprint(serverID) || query.Get("limit") == "" {
+		t.Fatalf("query = %v", query)
+	}
+	other := int64(1)
+	if tasks, err := c.ListTasks(ctx, TaskFilter{ServerID: &other}, Page{}); err != nil || len(tasks) != 0 {
+		t.Fatalf("tasks of another server: %v %+v", err, tasks)
+	}
+	zero := int64(0)
+	if _, err := c.ListTasks(ctx, TaskFilter{ServerID: &zero}, Page{Limit: 5, Offset: 2}); err != nil {
+		t.Fatal(err)
+	}
+	requests = m.Requests()
+	query = requests[len(requests)-1].Query
+	if query.Get("serverId") != "0" || query.Get("limit") != "5" || query.Get("offset") != "2" {
+		t.Fatalf("query = %v", query)
+	}
+}
+
+func TestMockOffsetWithoutLimit(t *testing.T) {
+	c, _ := mockClient(t)
+	logs, err := c.ListServerLogs(context.Background(), mockapi.DefaultServerID, Page{Offset: 1})
+	if err != nil || len(logs) != 1 || logs[0].LogKey != "server.rebooted" {
+		t.Fatalf("logs: %v %+v", err, logs)
+	}
+}
+
+func TestDryRunRejectsOtherOKBody(t *testing.T) {
+	c := newTestClient(t, func(_, _ string, _ []byte) (int, string) {
+		return 200, `{}`
+	})
+	if _, err := c.DryRunSnapshot(context.Background(), 5, "vda", false); err == nil {
+		t.Fatal("a body that is no list must fail")
 	}
 }

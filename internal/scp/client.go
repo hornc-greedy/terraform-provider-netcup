@@ -11,8 +11,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -137,14 +139,23 @@ func (c *Client) send(ctx context.Context, method, path, contentType string, bod
 	return c.sendTo(ctx, method, c.BaseURL+path, contentType, body, out)
 }
 
-// sendTo requests a new token once after a 401 and retries idempotent requests
-// after a transport error or a 5xx.
+// sendTo sends a request and decodes the answer as decodeResponse does.
 func (c *Client) sendTo(ctx context.Context, method, target, contentType string, body, out any) error {
+	status, raw, err := c.exchange(ctx, method, target, contentType, body)
+	if err != nil {
+		return err
+	}
+	return decodeResponse(method, target, status, raw, out)
+}
+
+// exchange requests a new token once after a 401 and retries idempotent
+// requests after a transport error or a 5xx.
+func (c *Client) exchange(ctx context.Context, method, target, contentType string, body any) (int, []byte, error) {
 	var payload []byte
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			return err
+			return 0, nil, err
 		}
 		payload = b
 	}
@@ -154,7 +165,7 @@ func (c *Client) sendTo(ctx context.Context, method, target, contentType string,
 	for attempt := 1; ; attempt++ {
 		token, err := c.ensureToken(ctx)
 		if err != nil {
-			return err
+			return 0, nil, err
 		}
 		status, raw, err := c.request(ctx, method, target, contentType, token, payload)
 		if status == http.StatusUnauthorized && !tokenRenewed {
@@ -166,16 +177,13 @@ func (c *Client) sendTo(ctx context.Context, method, target, contentType string,
 		if attempt < maxAttempts && ctx.Err() == nil && retryable(method, status, err) {
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return 0, nil, ctx.Err()
 			case <-time.After(delay):
 			}
 			delay *= 2
 			continue
 		}
-		if err != nil {
-			return err
-		}
-		return decodeResponse(method, target, status, raw, out)
+		return status, raw, err
 	}
 }
 
@@ -258,13 +266,13 @@ func decodeResponse(method, target string, status int, raw []byte, out any) erro
 // pageSize is the limit of one page of a limit/offset list endpoint.
 const pageSize = 100
 
-// listAll reads every page of a limit/offset list endpoint. It stops at an empty
-// page, so a server-side limit below pageSize loses no entries.
-func listAll[T any](ctx context.Context, c *Client, path string) ([]T, error) {
+// listAll reads all pages of a limit/offset list endpoint from offset on. It stops
+// at an empty page, so a server-side limit below pageSize loses no entries.
+func listAll[T any](ctx context.Context, c *Client, path string, filter url.Values, offset int) ([]T, error) {
 	var all []T
 	for {
-		var page []T
-		if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s?limit=%d&offset=%d", path, pageSize, len(all)), nil, &page); err != nil {
+		page, err := listOnePage[T](ctx, c, path, filter, pageSize, offset+len(all))
+		if err != nil {
 			return nil, err
 		}
 		if len(page) == 0 {
@@ -272,4 +280,14 @@ func listAll[T any](ctx context.Context, c *Client, path string) ([]T, error) {
 		}
 		all = append(all, page...)
 	}
+}
+
+func listOnePage[T any](ctx context.Context, c *Client, path string, filter url.Values, limit, offset int) ([]T, error) {
+	query := url.Values{"limit": {strconv.Itoa(limit)}, "offset": {strconv.Itoa(offset)}}
+	maps.Copy(query, filter)
+	var page []T
+	if err := c.do(ctx, http.MethodGet, path+"?"+query.Encode(), nil, &page); err != nil {
+		return nil, err
+	}
+	return page, nil
 }
