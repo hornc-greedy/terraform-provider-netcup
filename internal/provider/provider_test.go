@@ -60,6 +60,18 @@ func testAccPreCheckSCP(t *testing.T) {
 	t.Setenv("NETCUP_SCP_BASE_URL", "")
 }
 
+// testAccPreCheckCloudDNS skips the test unless a key explicitly meant for live
+// tests is set.
+func testAccPreCheckCloudDNS(t *testing.T) {
+	t.Helper()
+	key := os.Getenv("NETCUP_TEST_CLOUDDNS_API_KEY")
+	if key == "" {
+		t.Skip("NETCUP_TEST_CLOUDDNS_API_KEY not set")
+	}
+	t.Setenv("NETCUP_CLOUDDNS_API_KEY", key)
+	t.Setenv("NETCUP_CLOUDDNS_BASE_URL", "")
+}
+
 // testAccLiveAccount skips a live test without TF_ACC or the token and fails it
 // unless every server of the account has the nickname prefix liveServerNickname.
 func testAccLiveAccount(t *testing.T) []scp.Server {

@@ -181,6 +181,8 @@ variables. Each test is skipped unless all of its variables are set.
 | the token and `NETCUP_TEST_SERVER_ID` | server | an offline snapshot of `vda` restarts the server, policies are assigned to the first interface and removed again, nickname and autostart are set |
 | the token, the server, `NETCUP_TEST_RDNS_IP`, `NETCUP_TEST_RDNS_DOMAIN` | reverse DNS | the PTR of the given IP, which must belong to the server, is set, changed and deleted |
 | the token, the server, `NETCUP_TEST_FAILOVER_IP_ID` | failover route | the unrouted IPv4 failover IP stays routed to the server |
+| `NETCUP_TEST_CLOUDDNS_API_KEY` | CloudDNS data sources | none, they only read |
+| `NETCUP_TEST_CLOUDDNS_API_KEY`, `NETCUP_TEST_CLOUDDNS_DOMAIN` | CloudDNS records, ACME challenges | a record is created, its TTL changed and it is deleted, a challenge is created and deleted |
 | `NETCUP_TEST_CUSTOMER_NUMBER`, `NETCUP_TEST_API_KEY`, `NETCUP_TEST_API_PASSWORD`, `NETCUP_TEST_DOMAIN` | CCP DNS | a record is created, changed and deleted, the zone TTL is set to 3600, then to 86400 and stays there |
 
 ### Trying a local build
