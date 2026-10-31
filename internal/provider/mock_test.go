@@ -529,6 +529,174 @@ data "netcup_clouddns_domain" "missing" {
 	}))
 }
 
+func TestMockServerInfoDataSources(t *testing.T) {
+	m := mockapi.New(t)
+	m.EnableGPU()
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockConfig(m, fmt.Sprintf(`
+resource "netcup_server_snapshot" "test" {
+  server_id = %[1]d
+  name      = "s"
+  disk_name = "vda"
+}
+
+data "netcup_server_disks" "all" {
+  server_id = %[1]d
+}
+
+data "netcup_server_disk" "first" {
+  server_id = %[1]d
+  name      = data.netcup_server_disks.all.disks[0].name
+}
+
+data "netcup_server_disk_supported_drivers" "all" {
+  server_id = %[1]d
+}
+
+data "netcup_server_guest_agent" "agent" {
+  server_id = %[1]d
+}
+
+data "netcup_server_guest_agent_status" "agent" {
+  server_id = %[1]d
+}
+
+data "netcup_server_image_flavours" "all" {
+  server_id = %[1]d
+}
+
+data "netcup_server_iso_images" "all" {
+  server_id = %[1]d
+}
+
+data "netcup_server_logs" "first" {
+  server_id = %[1]d
+  limit     = 1
+}
+
+data "netcup_server_logs" "second" {
+  server_id = %[1]d
+  limit     = 1
+  offset    = 1
+}
+
+data "netcup_server_metrics_cpu" "metric" {
+  server_id = %[1]d
+  hours     = 2
+}
+
+data "netcup_server_metrics_disk" "metric" {
+  server_id = %[1]d
+}
+
+data "netcup_server_metrics_network" "metric" {
+  server_id = %[1]d
+}
+
+data "netcup_server_metrics_network_packet" "metric" {
+  server_id = %[1]d
+}
+
+data "netcup_server_snapshots" "all" {
+  server_id  = %[1]d
+  depends_on = [netcup_server_snapshot.test]
+}
+
+data "netcup_server_snapshot_dryrun" "disk" {
+  server_id = %[1]d
+  disk_name = "vda"
+}
+
+data "netcup_server_snapshot_dryrun" "online_with_disk" {
+  server_id       = %[1]d
+  disk_name       = "vda"
+  online_snapshot = true
+}
+
+data "netcup_tasks" "finished" {
+  server_id  = %[1]d
+  state      = "FINISHED"
+  depends_on = [netcup_server_snapshot.test]
+}
+
+output "cpu" {
+  value = jsondecode(data.netcup_server_metrics_cpu.metric.data)
+}
+
+output "guest_agent_version" {
+  value = jsondecode(data.netcup_server_guest_agent.agent.guest_agent_data).version
+}
+`, mockapi.DefaultServerID)),
+		Check: resource.ComposeAggregateTestCheckFunc(
+			resource.TestCheckResourceAttr("data.netcup_server_disk.first", "storage_driver", "VIRTIO"),
+			resource.TestCheckResourceAttr("data.netcup_server_disks.all", "disks.0.capacity_in_mib", "8192"),
+			resource.TestCheckResourceAttr("data.netcup_server_disk_supported_drivers.all", "supported_drivers.#", "2"),
+			resource.TestCheckResourceAttr("data.netcup_server_guest_agent.agent", "guest_agent_available", "true"),
+			resource.TestCheckOutput("guest_agent_version", "9.0"),
+			resource.TestCheckResourceAttr("data.netcup_server_guest_agent_status.agent", "available", "true"),
+			resource.TestCheckResourceAttr("data.netcup_server_image_flavours.all", "image_flavours.0.image.name", "Debian 13.7.0 BIOS amd64"),
+			resource.TestCheckResourceAttr("data.netcup_server_iso_images.all", "iso_images.0.filename", "rescue.iso"),
+			resource.TestCheckNoResourceAttr("data.netcup_server_iso_images.all", "iso_images.0.description"),
+			resource.TestCheckResourceAttr("data.netcup_server_logs.second", "logs.#", "1"),
+			resource.TestCheckResourceAttr("data.netcup_server_logs.second", "logs.0.log_key", "server.rebooted"),
+			resource.TestCheckResourceAttr("data.netcup_server_logs.first", "logs.0.executing_user.username", "mock"),
+			resource.TestCheckNoResourceAttr("data.netcup_server_logs.first", "logs.0.executing_user.company"),
+			resource.TestMatchResourceAttr("data.netcup_server_metrics_cpu.metric", "data", regexp.MustCompile(`"cpu0"`)),
+			resource.TestMatchResourceAttr("data.netcup_server_metrics_disk.metric", "data", regexp.MustCompile(`"vda"`)),
+			resource.TestMatchResourceAttr("data.netcup_server_metrics_network.metric", "data", regexp.MustCompile(`"eth0"`)),
+			resource.TestMatchResourceAttr("data.netcup_server_metrics_network_packet.metric", "data", regexp.MustCompile(`"eth0packets"`)),
+			func(*terraform.State) error {
+				for _, r := range m.Requests() {
+					if strings.HasSuffix(r.Path, "/metrics/cpu") && r.Query.Get("hours") != "2" {
+						return fmt.Errorf("hours = %q", r.Query.Get("hours"))
+					}
+					if strings.HasSuffix(r.Path, "/tasks") && (r.Query.Get("state") != "FINISHED" || r.Query.Get("serverId") != strconv.Itoa(mockapi.DefaultServerID)) {
+						return fmt.Errorf("task query = %v", r.Query)
+					}
+				}
+				return nil
+			},
+			resource.TestCheckResourceAttr("data.netcup_server_snapshots.all", "snapshots.0.name", "s"),
+			resource.TestCheckResourceAttr("data.netcup_server_snapshots.all", "snapshots.0.disks.0", "vda"),
+			resource.TestCheckResourceAttr("data.netcup_server_snapshots.all", "snapshots.0.exported", "false"),
+			resource.TestCheckNoResourceAttr("data.netcup_server_snapshots.all", "snapshots.0.exported_size_in_kib"),
+			resource.TestCheckResourceAttr("data.netcup_server_snapshot_dryrun.disk", "errors.#", "0"),
+			resource.TestCheckResourceAttr("data.netcup_server_snapshot_dryrun.online_with_disk", "errors.0.code", "server.snapshot.create.error.online.diskselected"),
+			resource.TestCheckResourceAttr("data.netcup_tasks.finished", "tasks.0.state", "FINISHED"),
+			resource.TestCheckResourceAttr("data.netcup_tasks.finished", "tasks.0.executing_user.username", "mock"),
+			resource.TestCheckResourceAttr("data.netcup_tasks.finished", "tasks.0.task_progress.progress_in_percent", "100"),
+		),
+	}))
+}
+
+func TestMockGuestAgentWithoutData(t *testing.T) {
+	m := mockapi.New(t)
+	m.RemoveGuestAgent()
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockConfig(m, fmt.Sprintf(`
+data "netcup_server_guest_agent" "agent" {
+  server_id = %d
+}
+`, mockapi.DefaultServerID)),
+		Check: resource.ComposeAggregateTestCheckFunc(
+			resource.TestCheckResourceAttr("data.netcup_server_guest_agent.agent", "guest_agent_available", "false"),
+			resource.TestCheckNoResourceAttr("data.netcup_server_guest_agent.agent", "guest_agent_data"),
+		),
+	}))
+}
+
+func TestMockSnapshotDryrunNeedsDisk(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockConfig(m, fmt.Sprintf(`
+data "netcup_server_snapshot_dryrun" "offline" {
+  server_id = %d
+}
+`, mockapi.DefaultServerID)),
+		ExpectError: regexp.MustCompile(`Missing disk_name`),
+	}))
+}
+
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {
 	for attribute, object := range map[string]string{
 		"scp_refresh_token": `data "netcup_servers" "test" {}`,
