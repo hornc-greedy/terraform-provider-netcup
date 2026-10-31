@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -100,13 +101,15 @@ type serverFirewall struct {
 }
 
 type snapshot struct {
-	UUID         string   `json:"uuid"`
-	Name         string   `json:"name"`
-	Description  *string  `json:"description"`
-	Disks        []string `json:"disks"`
-	CreationTime string   `json:"creationTime"`
-	State        string   `json:"state"`
-	Online       bool     `json:"online"`
+	UUID              string   `json:"uuid"`
+	Name              string   `json:"name"`
+	Description       *string  `json:"description"`
+	Disks             []string `json:"disks"`
+	CreationTime      string   `json:"creationTime"`
+	State             string   `json:"state"`
+	Online            bool     `json:"online"`
+	Exported          bool     `json:"exported"`
+	ExportedSizeInKiB *int64   `json:"exportedSizeInKiB"`
 }
 
 type sshKey struct {
@@ -124,17 +127,20 @@ type failoverIP struct {
 
 // scpState is everything the SCP part of the mock remembers.
 type scpState struct {
-	nextID     int
-	servers    map[int]*server
-	firewalls  map[string]*serverFirewall
-	snapshots  map[int]map[string]*snapshot
-	policies   map[int]*firewallPolicy
-	sshKeys    map[int]*sshKey
-	rdns       map[string]string
-	failoverV4 map[int]*failoverIP
-	failoverV6 map[int]*failoverIP
-	tasks      map[string]*taskInfo
-	failedTask *taskInfo
+	nextID            int
+	servers           map[int]*server
+	firewalls         map[string]*serverFirewall
+	snapshots         map[int]map[string]*snapshot
+	policies          map[int]*firewallPolicy
+	sshKeys           map[int]*sshKey
+	rdns              map[string]string
+	failoverV4        map[int]*failoverIP
+	failoverV6        map[int]*failoverIP
+	tasks             map[string]*taskInfo
+	failedTask        *taskInfo
+	gpuAvailable      bool
+	guestAgentMissing bool
+	taskServers       map[string]int
 }
 
 func newSCPState() *scpState {
@@ -150,14 +156,15 @@ func newSCPState() *scpState {
 				},
 			},
 		},
-		firewalls:  map[string]*serverFirewall{defaultMAC: {copied: []int{copiedPolicyID}, active: true}},
-		snapshots:  map[int]map[string]*snapshot{defaultServerID: {}},
-		policies:   map[int]*firewallPolicy{copiedPolicyID: {ID: copiedPolicyID, Name: "copied", Rules: []firewallRule{}}},
-		sshKeys:    map[int]*sshKey{},
-		rdns:       map[string]string{},
-		failoverV4: map[int]*failoverIP{failoverV4ID: {ID: failoverV4ID, Address: defaultFailoverV4, ServerID: defaultServerID}},
-		failoverV6: map[int]*failoverIP{failoverV6ID: {ID: failoverV6ID, Address: "2001:db8:1::", ServerID: 0}},
-		tasks:      map[string]*taskInfo{},
+		firewalls:   map[string]*serverFirewall{defaultMAC: {copied: []int{copiedPolicyID}, active: true}},
+		snapshots:   map[int]map[string]*snapshot{defaultServerID: {}},
+		policies:    map[int]*firewallPolicy{copiedPolicyID: {ID: copiedPolicyID, Name: "copied", Rules: []firewallRule{}}},
+		sshKeys:     map[int]*sshKey{},
+		rdns:        map[string]string{},
+		failoverV4:  map[int]*failoverIP{failoverV4ID: {ID: failoverV4ID, Address: defaultFailoverV4, ServerID: defaultServerID}},
+		failoverV6:  map[int]*failoverIP{failoverV6ID: {ID: failoverV6ID, Address: "2001:db8:1::", ServerID: 0}},
+		tasks:       map[string]*taskInfo{},
+		taskServers: map[string]int{},
 	}
 }
 
@@ -168,9 +175,10 @@ func (s *scpState) newID() int {
 
 // startTask returns a pending task. Polling it reports FINISHED, or the failure
 // set by FailTasks.
-func (s *scpState) startTask(name string) *taskInfo {
+func (s *scpState) startTask(name string, serverID int) *taskInfo {
 	t := &taskInfo{UUID: fmt.Sprintf("task-%d", s.newID()), Name: name, State: "PENDING"}
 	s.tasks[t.UUID] = t
+	s.taskServers[t.UUID] = serverID
 	return t
 }
 
@@ -281,6 +289,23 @@ func (s *Server) scpHandlers() map[string]handler {
 		"POST " + pathSnapshots:  s.createSnapshot,
 		"GET " + pathSnapshot:    s.getSnapshot,
 		"DELETE " + pathSnapshot: s.deleteSnapshot,
+
+		"GET " + pathServer + "/disks":                   s.listDisks,
+		"GET " + pathServer + "/disks/{diskName}":        s.getDisk,
+		"GET " + pathServer + "/disks/supported-drivers": s.listDrivers,
+		"GET " + pathServer + "/gpu-driver":              s.getGPUDriver,
+		"GET " + pathServer + "/guest-agent":             s.getGuestAgent,
+		"GET " + pathServer + "/guest-agent/status":      s.getGuestAgentStatus,
+		"GET " + pathServer + "/imageflavours":           s.listFlavours,
+		"GET " + pathServer + "/isoimages":               s.listIsoImages,
+		"GET " + pathServer + "/logs":                    s.listServerLogs,
+		"GET " + pathServer + "/metrics/cpu":             s.getMetrics("cpu0"),
+		"GET " + pathServer + "/metrics/disk":            s.getMetrics("vda"),
+		"GET " + pathServer + "/metrics/network":         s.getMetrics("eth0"),
+		"GET " + pathServer + "/metrics/network/packet":  s.getMetrics("eth0packets"),
+		"GET " + pathSnapshots:                           s.listSnapshots,
+		"POST " + pathSnapshots + ":dryrun":              s.dryRunSnapshot,
+		"GET /api/v1/tasks":                              s.listTasks,
 
 		"GET " + pathFailoverV4:             s.listFailoverV4,
 		"GET " + pathFailoverV6:             s.listFailoverV6,
@@ -398,7 +423,7 @@ func (s *Server) patchServer(c *call) (int, any) {
 			return http.StatusServiceUnavailable, responseError{Code: "error.mock", Message: err.Error()}
 		}
 	}
-	return http.StatusAccepted, s.scp.startTask("ServerPatch")
+	return http.StatusAccepted, s.scp.startTask("ServerPatch", v.ID)
 }
 
 // checkServerPatch validates the body against the schema of its attribute.
@@ -534,7 +559,7 @@ func (s *Server) putFirewall(c *call) (int, any) {
 	}
 	// The specification states that a missing value activates the firewall.
 	fw.active = body.Active == nil || *body.Active
-	return http.StatusAccepted, s.scp.startTask("ServerFirewallSave")
+	return http.StatusAccepted, s.scp.startTask("ServerFirewallSave", defaultServerID)
 }
 
 func (s *Server) createSnapshot(c *call) (int, any) {
@@ -565,7 +590,7 @@ func (s *Server) createSnapshot(c *call) (int, any) {
 		UUID: fmt.Sprintf("snap-%d", s.scp.newID()), Name: body.Name, Description: body.Description,
 		Disks: disks, CreationTime: snapshotCreated, State: "SHUTOFF", Online: body.OnlineSnapshot,
 	}
-	return http.StatusAccepted, s.scp.startTask("ServerSnapshotCreate")
+	return http.StatusAccepted, s.scp.startTask("ServerSnapshotCreate", v.ID)
 }
 
 func (s *Server) getSnapshot(c *call) (int, any) {
@@ -589,7 +614,7 @@ func (s *Server) deleteSnapshot(c *call) (int, any) {
 		return notFound()
 	}
 	delete(s.scp.snapshots[v.ID], c.params["name"])
-	return http.StatusAccepted, s.scp.startTask("ServerSnapshotDelete")
+	return http.StatusAccepted, s.scp.startTask("ServerSnapshotDelete", v.ID)
 }
 
 // withServer adds the server a failover IP is routed to. The specification does
@@ -637,7 +662,7 @@ func (s *Server) routeFailover(ips func() map[int]*failoverIP) handler {
 			return notFound()
 		}
 		ip.ServerID = body.ServerID
-		return http.StatusAccepted, s.scp.startTask("FailoverRoute")
+		return http.StatusAccepted, s.scp.startTask("FailoverRoute", body.ServerID)
 	}
 }
 
@@ -711,7 +736,7 @@ func (s *Server) putPolicy(c *call) (int, any) {
 	}
 	p.ID = id
 	s.scp.policies[id] = p
-	return http.StatusAccepted, map[string]any{"firewallPolicy": returnedPolicy(p), "taskInfo": s.scp.startTask("FirewallPolicyUpdate")}
+	return http.StatusAccepted, map[string]any{"firewallPolicy": returnedPolicy(p), "taskInfo": s.scp.startTask("FirewallPolicyUpdate", 0)}
 }
 
 func (s *Server) deletePolicy(c *call) (int, any) {
@@ -755,4 +780,179 @@ func (s *Server) deleteSSHKey(c *call) (int, any) {
 	}
 	delete(s.scp.sshKeys, id)
 	return http.StatusNoContent, nil
+}
+
+// checkServer fails the test if the server is unknown, for the operations whose
+// specification has no 404.
+func (s *Server) checkServer(c *call) {
+	if s.scpServer(c) == nil {
+		s.t.Errorf("request for unknown server %s", c.params["serverId"])
+	}
+}
+
+var mockUser = map[string]any{"id": UserID, "username": "mock", "firstname": "Mo", "lastname": "Ck", "email": "mock@example.com", "company": nil}
+
+var mockDisk = map[string]any{"name": "vda", "allocationInMiB": 1024, "capacityInMiB": 8192, "storageDriver": "VIRTIO"}
+
+func (s *Server) listDisks(c *call) (int, any) {
+	s.checkServer(c)
+	return http.StatusOK, []map[string]any{mockDisk}
+}
+
+func (s *Server) getDisk(c *call) (int, any) {
+	s.checkServer(c)
+	if c.params["diskName"] != "vda" {
+		s.t.Errorf("request for unknown disk %s", c.params["diskName"])
+	}
+	return http.StatusOK, mockDisk
+}
+
+func (s *Server) listDrivers(c *call) (int, any) {
+	if s.scpServer(c) == nil {
+		return notFound()
+	}
+	return http.StatusOK, []string{"VIRTIO", "VIRTIO_SCSI"}
+}
+
+func (s *Server) getGPUDriver(c *call) (int, any) {
+	s.checkServer(c)
+	if !s.scp.gpuAvailable {
+		return badRequest("GPU driver or vGPU not available")
+	}
+	return http.StatusOK, map[string]any{
+		"filename": "driver.run", "presignedUrl": "https://s3.example/driver.run?signature=mock",
+		"presignedUrlValidityDurationInHours": 24, "headers": map[string][]string{"x-amz-checksum-mode": {"ENABLED"}},
+	}
+}
+
+// RemoveGuestAgent makes the guest agent unavailable.
+func (s *Server) RemoveGuestAgent() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.guestAgentMissing = true
+}
+
+// MarkSnapshotExported sets the export of a snapshot of the default server.
+func (s *Server) MarkSnapshotExported(name string, sizeInKiB int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	snap := s.scp.snapshots[defaultServerID][name]
+	snap.Exported = true
+	snap.ExportedSizeInKiB = &sizeInKiB
+}
+
+// EnableGPU makes the GPU driver of every server available.
+func (s *Server) EnableGPU() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.gpuAvailable = true
+}
+
+func (s *Server) getGuestAgent(c *call) (int, any) {
+	if s.scpServer(c) == nil {
+		return notFound()
+	}
+	if s.scp.guestAgentMissing {
+		return http.StatusOK, map[string]any{"guestAgentAvailable": false}
+	}
+	return http.StatusOK, map[string]any{"guestAgentAvailable": true, "guestAgentData": map[string]any{"version": "9.0"}}
+}
+
+func (s *Server) getGuestAgentStatus(c *call) (int, any) {
+	if s.scpServer(c) == nil {
+		return notFound()
+	}
+	return http.StatusOK, map[string]any{"available": !s.scp.guestAgentMissing}
+}
+
+func (s *Server) listFlavours(c *call) (int, any) {
+	if s.scpServer(c) == nil {
+		return notFound()
+	}
+	// netcup names the system in the image, the flavour only says "minimal".
+	return http.StatusOK, []map[string]any{
+		{"id": 119, "name": "minimal", "alias": "Minimal", "text": "minimal", "image": map[string]any{"id": 2, "name": "Debian 13.7.0 BIOS amd64"}},
+		{"id": 128, "name": "minimal", "alias": "Minimal", "text": "minimal", "image": map[string]any{"id": 3, "name": "Debian 13.7.0 UEFI amd64"}},
+	}
+}
+
+func (s *Server) listIsoImages(c *call) (int, any) {
+	s.checkServer(c)
+	// The specification requires filename without describing it.
+	return http.StatusOK, []map[string]any{{"id": 3, "name": "rescue.iso", "filename": "rescue.iso", "description": nil, "architecture": "AMD64"}}
+}
+
+func (s *Server) listServerLogs(c *call) (int, any) {
+	s.checkServer(c)
+	all := []map[string]any{
+		{"type": "INFO", "date": snapshotCreated, "logKey": "server.started", "message": "started", "executingUser": mockUser},
+		{"type": "WARNING", "date": snapshotCreated, "logKey": "server.rebooted", "message": "rebooted"},
+	}
+	return http.StatusOK, page(all, c)
+}
+
+func (s *Server) getMetrics(key string) handler {
+	return func(c *call) (int, any) {
+		s.checkServer(c)
+		return http.StatusOK, map[string]any{snapshotCreated: map[string]float64{key: 0.5}}
+	}
+}
+
+func (s *Server) listSnapshots(c *call) (int, any) {
+	v := s.scpServer(c)
+	if v == nil {
+		return notFound()
+	}
+	return http.StatusOK, sortedValues(s.scp.snapshots[v.ID])
+}
+
+// dryRunSnapshot answers the dry run with codes the specification lists. Which
+// code applies when is an assumption from its descriptions.
+func (s *Server) dryRunSnapshot(c *call) (int, any) {
+	if s.scpServer(c) == nil {
+		return notFound()
+	}
+	var body struct {
+		DiskName       *string `json:"diskName"`
+		OnlineSnapshot bool    `json:"onlineSnapshot"`
+	}
+	if err := c.decode(&body); err != nil {
+		return badRequest(err.Error())
+	}
+	switch {
+	case body.OnlineSnapshot && body.DiskName != nil:
+		return http.StatusBadRequest, []responseError{{Code: "server.snapshot.create.error.online.diskselected", Message: "Online snapshot cannot select a disk"}}
+	case !body.OnlineSnapshot && body.DiskName == nil:
+		return http.StatusBadRequest, []responseError{{Code: "server.snapshot.create.error.disk", Message: "Disk name cannot be blank"}}
+	}
+	return http.StatusOK, []responseError{}
+}
+
+func (s *Server) listTasks(c *call) (int, any) {
+	type task struct {
+		taskInfo
+		ExecutingUser map[string]any `json:"executingUser"`
+		StartedAt     string         `json:"startedAt"`
+		FinishedAt    string         `json:"finishedAt"`
+		OnRollback    bool           `json:"onRollback"`
+		TaskProgress  map[string]any `json:"taskProgress"`
+	}
+	all := []task{}
+	for _, t := range sortedValues(s.scp.tasks) {
+		if state := c.query.Get("state"); state != "" && state != "FINISHED" {
+			continue
+		}
+		if q := c.query.Get("q"); q != "" && !strings.Contains(t.Name, q) {
+			continue
+		}
+		if id := c.query.Get("serverId"); id != "" && id != strconv.Itoa(s.scp.taskServers[t.UUID]) {
+			continue
+		}
+		all = append(all, task{
+			taskInfo: taskInfo{UUID: t.UUID, Name: t.Name, State: "FINISHED"}, ExecutingUser: mockUser,
+			StartedAt: snapshotCreated, FinishedAt: snapshotCreated,
+			TaskProgress: map[string]any{"expectedFinishedAt": snapshotCreated, "progressInPercent": 100},
+		})
+	}
+	return http.StatusOK, page(all, c)
 }
