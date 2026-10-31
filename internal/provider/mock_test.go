@@ -436,6 +436,39 @@ data "netcup_clouddns_records" "legacy" {
 	}))
 }
 
+func TestMockCloudDNSAcmeChallenge(t *testing.T) {
+	m := mockapi.New(t)
+	const name = "netcup_clouddns_acme_challenge.test"
+	testCase := testMockCase(
+		resource.TestStep{
+			Config: testMockCloudDNSConfig(m, fmt.Sprintf(`
+resource "netcup_clouddns_acme_challenge" "test" {
+  domain_id = %d
+  scope     = "www"
+  value     = "abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE"
+}
+
+data "netcup_clouddns_acme_challenges" "all" {
+  domain_id  = %[1]d
+  depends_on = [netcup_clouddns_acme_challenge.test]
+}
+`, mockapi.CloudDNSDomainID)),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttrSet(name, "fqdn"),
+				resource.TestCheckResourceAttr("data.netcup_clouddns_acme_challenges.all", "challenges.#", "1"),
+			),
+		},
+		resource.TestStep{ResourceName: name, ImportState: true, ImportStateVerify: true},
+	)
+	testCase.CheckDestroy = func(*terraform.State) error {
+		if got := m.ChallengeCount(); got != 0 {
+			return fmt.Errorf("challenges after destroy: %d", got)
+		}
+		return nil
+	}
+	resource.Test(t, testCase)
+}
+
 func TestMockCloudDNSDataSources(t *testing.T) {
 	m := mockapi.New(t)
 	resource.Test(t, testMockCase(resource.TestStep{

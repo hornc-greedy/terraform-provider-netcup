@@ -156,6 +156,7 @@ func (p *netcupProvider) Resources(_ context.Context) []func() resource.Resource
 		NewFailoverIPRouteResource,
 		NewServerSettingsResource,
 		NewCloudDNSRecordResource,
+		NewCloudDNSAcmeChallengeResource,
 	}
 }
 

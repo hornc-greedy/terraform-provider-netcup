@@ -99,7 +99,7 @@ The refresh token stays valid as long as it is used at least once every 30 days.
 | Category | Resources | Data sources | Ephemeral | Actions |
 |---|---|---|---|---|
 | CCP DNS | `netcup_dns_record`, `netcup_dns_zone` | `netcup_dns_records` |  |  |
-| CloudDNS | `netcup_clouddns_record` | `netcup_clouddns_record`, `netcup_clouddns_domain`, `netcup_clouddns_domains`, `netcup_clouddns_records`, `netcup_clouddns_revision`, `netcup_clouddns_revisions`, `netcup_clouddns_record_types`, `netcup_clouddns_acme_challenges` |  |  |
+| CloudDNS | `netcup_clouddns_record`, `netcup_clouddns_acme_challenge` | `netcup_clouddns_record`, `netcup_clouddns_domain`, `netcup_clouddns_domains`, `netcup_clouddns_records`, `netcup_clouddns_revision`, `netcup_clouddns_revisions`, `netcup_clouddns_record_types`, `netcup_clouddns_acme_challenges` |  |  |
 | Servers | `netcup_server_settings` | `netcup_servers`, `netcup_server` |  |  |
 | Interfaces and reverse DNS | `netcup_reverse_dns` | `netcup_server_interfaces` |  |  |
 | Snapshots | `netcup_server_snapshot` |  |  |  |
