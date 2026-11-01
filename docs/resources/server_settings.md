@@ -33,6 +33,8 @@ resource "netcup_server_settings" "web" {
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
 - `autostart` (Boolean) Whether the server starts when its host starts.
 - `backup_time` (String) Daily backup start as local time with UTC offset, e.g. `01:30:00+02:00`. Negative offsets are not supported.
 - `bootorder` (List of String) Boot devices in order, each one of `HDD`, `CDROM`, `NETWORK`.
@@ -43,6 +45,8 @@ resource "netcup_server_settings" "web" {
 - `nickname` (String) Nickname shown in the SCP.
 - `os_optimization` (String) Operating system the virtual hardware is tuned for: `LINUX`, `WINDOWS`, `BSD`, `LINUX_LEGACY` or `UNKNOWN`.
 - `power_state` (String) `ON`, `OFF` or `SUSPENDED`. Changing it starts, shuts down or suspends the server.
+- `root_password_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Password of the root user. It stays out of plan and state and needs Terraform 1.11 or newer. It is sent on create, on the first apply after an import and whenever `root_password_wo_version` changes.
+- `root_password_wo_version` (Number) Change it to send `root_password_wo` again.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `uefi` (Boolean) Whether the server boots with UEFI.
 

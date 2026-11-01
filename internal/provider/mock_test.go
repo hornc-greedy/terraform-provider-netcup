@@ -1349,6 +1349,108 @@ func TestMockServerDiskDriverSendsNoChangeForTheSameDriver(t *testing.T) {
 	}))
 }
 
+func testMockRootPassword(version int) string {
+	return fmt.Sprintf(`
+resource "netcup_server_settings" "test" {
+  server_id                = %d
+  root_password_wo         = "secret-%d"
+  root_password_wo_version = %d
+}
+`, mockapi.DefaultServerID, version, version)
+}
+
+func TestMockServerSettingsRootPassword(t *testing.T) {
+	m := mockapi.New(t)
+	const name = "netcup_server_settings.test"
+	count := func(want int, last string) resource.TestCheckFunc {
+		return func(*terraform.State) error {
+			var got []string
+			for _, body := range m.PatchBodies() {
+				if strings.Contains(body, "rootPassword") {
+					got = append(got, body)
+				}
+			}
+			if len(got) != want || !strings.Contains(got[want-1], last) {
+				return fmt.Errorf("root password requests = %v", got)
+			}
+			return nil
+		}
+	}
+	resource.Test(t, resource.TestCase{
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_11_0)},
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testMockConfig(m, testMockRootPassword(1)),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					count(1, "secret-1"),
+					resource.TestCheckNoResourceAttr(name, "root_password_wo"),
+					resource.TestCheckResourceAttr(name, "root_password_wo_version", "1"),
+				),
+			},
+			{
+				// The same version sends nothing again, whatever the value is.
+				Config: testMockConfig(m, strings.ReplaceAll(testMockRootPassword(1), "secret-1", "other")),
+				Check:  count(1, "secret-1"),
+			},
+			{
+				Config: testMockConfig(m, testMockRootPassword(2)),
+				Check:  count(2, "secret-2"),
+			},
+		},
+	})
+}
+
+// The password goes after a shutdown and before a start.
+func TestMockServerSettingsRootPasswordOrder(t *testing.T) {
+	m := mockapi.New(t)
+	config := func(state string, version int) string {
+		return testMockConfig(m, fmt.Sprintf(`
+resource "netcup_server_settings" "test" {
+  server_id                = %d
+  power_state              = %q
+  root_password_wo         = "secret"
+  root_password_wo_version = %d
+}
+`, mockapi.DefaultServerID, state, version))
+	}
+	lastTwo := func(first, second string) resource.TestCheckFunc {
+		return func(*terraform.State) error {
+			bodies := m.PatchBodies()
+			got := bodies[len(bodies)-2:]
+			if !strings.Contains(got[0], first) || !strings.Contains(got[1], second) {
+				return fmt.Errorf("last PATCH bodies = %v", got)
+			}
+			return nil
+		}
+	}
+	resource.Test(t, resource.TestCase{
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_11_0)},
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{Config: config("OFF", 1), Check: lastTwo(`"state":"OFF"`, "rootPassword")},
+			{Config: config("ON", 2), Check: lastTwo("rootPassword", `"state":"ON"`)},
+		},
+	})
+}
+
+func TestMockServerSettingsRootPasswordNeedsVersion(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, resource.TestCase{
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_11_0)},
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{{
+			Config: testMockConfig(m, fmt.Sprintf(`
+resource "netcup_server_settings" "test" {
+  server_id        = %d
+  root_password_wo = "secret"
+}
+`, mockapi.DefaultServerID)),
+			ExpectError: regexp.MustCompile("Invalid Attribute Combination"),
+		}},
+	})
+}
+
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {
 	for attribute, object := range map[string]string{
 		"scp_refresh_token": `data "netcup_servers" "test" {}`,

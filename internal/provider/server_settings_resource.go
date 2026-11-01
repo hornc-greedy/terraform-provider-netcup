@@ -43,20 +43,22 @@ func NewServerSettingsResource() resource.Resource {
 }
 
 type serverSettingsModel struct {
-	ID                types.String   `tfsdk:"id"`
-	ServerID          types.Int64    `tfsdk:"server_id"`
-	Hostname          types.String   `tfsdk:"hostname"`
-	Nickname          types.String   `tfsdk:"nickname"`
-	Autostart         types.Bool     `tfsdk:"autostart"`
-	UEFI              types.Bool     `tfsdk:"uefi"`
-	Bootorder         types.List     `tfsdk:"bootorder"`
-	OSOptimization    types.String   `tfsdk:"os_optimization"`
-	CPUSockets        types.Int64    `tfsdk:"cpu_sockets"`
-	CPUCoresPerSocket types.Int64    `tfsdk:"cpu_cores_per_socket"`
-	KeyboardLayout    types.String   `tfsdk:"keyboard_layout"`
-	BackupTime        types.String   `tfsdk:"backup_time"`
-	PowerState        types.String   `tfsdk:"power_state"`
-	Timeouts          timeouts.Value `tfsdk:"timeouts"`
+	ID                    types.String   `tfsdk:"id"`
+	ServerID              types.Int64    `tfsdk:"server_id"`
+	Hostname              types.String   `tfsdk:"hostname"`
+	Nickname              types.String   `tfsdk:"nickname"`
+	Autostart             types.Bool     `tfsdk:"autostart"`
+	UEFI                  types.Bool     `tfsdk:"uefi"`
+	Bootorder             types.List     `tfsdk:"bootorder"`
+	OSOptimization        types.String   `tfsdk:"os_optimization"`
+	CPUSockets            types.Int64    `tfsdk:"cpu_sockets"`
+	CPUCoresPerSocket     types.Int64    `tfsdk:"cpu_cores_per_socket"`
+	KeyboardLayout        types.String   `tfsdk:"keyboard_layout"`
+	BackupTime            types.String   `tfsdk:"backup_time"`
+	PowerState            types.String   `tfsdk:"power_state"`
+	RootPasswordWO        types.String   `tfsdk:"root_password_wo"`
+	RootPasswordWOVersion types.Int64    `tfsdk:"root_password_wo_version"`
+	Timeouts              timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (r *serverSettingsResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -154,6 +156,18 @@ func (r *serverSettingsResource) Schema(ctx context.Context, _ resource.SchemaRe
 				MarkdownDescription: "`ON`, `OFF` or `SUSPENDED`. Changing it starts, shuts down or suspends the server.",
 				Validators:          []validator.String{stringvalidator.OneOf("ON", "OFF", "SUSPENDED")},
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"root_password_wo": schema.StringAttribute{
+				Optional:            true,
+				WriteOnly:           true,
+				Sensitive:           true,
+				MarkdownDescription: "Password of the root user. It stays out of plan and state and needs Terraform 1.11 or newer. It is sent on create, on the first apply after an import and whenever `root_password_wo_version` changes.",
+				Validators:          []validator.String{stringvalidator.AlsoRequires(path.MatchRoot("root_password_wo_version"))},
+			},
+			"root_password_wo_version": schema.Int64Attribute{
+				Optional:            true,
+				MarkdownDescription: "Change it to send `root_password_wo` again.",
+				Validators:          []validator.Int64{int64validator.AlsoRequires(path.MatchRoot("root_password_wo"))},
 			},
 			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
 				Create: true,
@@ -261,14 +275,24 @@ func (m serverSettingsModel) patches(ctx context.Context, cur *scp.Server, da *d
 	return out
 }
 
-// write applies the planned settings and reads the result back.
-func (r *serverSettingsResource) write(ctx context.Context, plan *serverSettingsModel, da *diagAppender) error {
+// write applies the planned settings and reads the result back. rootPassword goes
+// before a start or suspend and after a shutdown. The specification names no
+// required state, so the order is an assumption.
+func (r *serverSettingsResource) write(ctx context.Context, plan *serverSettingsModel, rootPassword *string, da *diagAppender) error {
 	id := int(plan.ServerID.ValueInt64())
 	cur, err := r.client.GetServerLive(ctx, id)
 	if err != nil {
 		return err
 	}
-	for _, p := range plan.patches(ctx, cur, da) {
+	patches := plan.patches(ctx, cur, da)
+	if rootPassword != nil {
+		position := len(patches)
+		if n := position - 1; n >= 0 && patches[n]["state"] != nil && plan.PowerState.ValueString() != "OFF" {
+			position = n
+		}
+		patches = slices.Insert(patches, position, map[string]any{"rootPassword": *rootPassword})
+	}
+	for _, p := range patches {
 		if err := r.client.PatchServer(ctx, id, p); err != nil {
 			return err
 		}
@@ -294,8 +318,13 @@ func (r *serverSettingsResource) Create(ctx context.Context, req resource.Create
 	}
 	ctx, cancel := context.WithTimeout(ctx, createTimeout)
 	defer cancel()
+	var cfg serverSettingsModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfg)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	da := &diagAppender{diags: &resp.Diagnostics}
-	if err := r.write(ctx, &plan, da); err != nil {
+	if err := r.write(ctx, &plan, cfg.RootPasswordWO.ValueStringPointer(), da); err != nil {
 		resp.Diagnostics.AddError("Error applying server settings", err.Error())
 		return
 	}
@@ -334,8 +363,18 @@ func (r *serverSettingsResource) Update(ctx context.Context, req resource.Update
 	}
 	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
 	defer cancel()
+	var cfg, state serverSettingsModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfg)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	var rootPassword *string
+	if !plan.RootPasswordWOVersion.Equal(state.RootPasswordWOVersion) {
+		rootPassword = cfg.RootPasswordWO.ValueStringPointer()
+	}
 	da := &diagAppender{diags: &resp.Diagnostics}
-	if err := r.write(ctx, &plan, da); err != nil {
+	if err := r.write(ctx, &plan, rootPassword, da); err != nil {
 		resp.Diagnostics.AddError("Error updating server settings", err.Error())
 		return
 	}

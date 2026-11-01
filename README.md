@@ -20,7 +20,7 @@ domains on CloudDNS and servers:
 ## Requirements
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
-  - ephemeral resources need 1.10
+  - ephemeral resources need 1.10, write-only attributes 1.11
 - [Go](https://go.dev/doc/install) >= 1.26 (to build the provider)
 
 ## Using the Provider
