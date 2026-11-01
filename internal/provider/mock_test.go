@@ -876,6 +876,144 @@ data "netcup_server_interfaces" "all" {
 	}))
 }
 
+func testMockUserVlan(name string) string {
+	return fmt.Sprintf(`
+resource "netcup_user_vlan" "test" {
+  vlan_id = %d
+  name    = %q
+}
+
+data "netcup_user_vlans" "server" {
+  server_id  = %d
+  depends_on = [netcup_user_vlan.test]
+}
+
+data "netcup_user_vlans" "other_server" {
+  server_id = 1
+}
+
+data "netcup_user_vlan" "test" {
+  vlan_id    = netcup_user_vlan.test.vlan_id
+  depends_on = [netcup_user_vlan.test]
+}
+
+data "netcup_vlan" "foreign" {
+  vlan_id = %d
+}
+`, mockapi.VlanID, name, mockapi.DefaultServerID, mockapi.ForeignVlanID)
+}
+
+func TestMockUserVlan(t *testing.T) {
+	m := mockapi.New(t)
+	const name = "netcup_user_vlan.test"
+	resource.Test(t, testMockCase(
+		resource.TestStep{
+			Config: testMockConfig(m, testMockUserVlan("one")),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr(name, "name", "one"),
+				resource.TestCheckResourceAttr(name, "site.city", "Nuernberg"),
+				resource.TestCheckResourceAttr(name, "bandwidth_class.speed_in_mbit", "1000"),
+				resource.TestCheckResourceAttr(name, "user.username", "mock"),
+				resource.TestCheckResourceAttr("data.netcup_user_vlan.test", "name", "one"),
+				resource.TestCheckResourceAttr("data.netcup_vlan.foreign", "name", "foreign"),
+				resource.TestCheckResourceAttr("data.netcup_user_vlans.server", "vlans.#", "1"),
+				resource.TestCheckResourceAttr("data.netcup_user_vlans.server", "vlans.0.vlan_id", strconv.Itoa(mockapi.VlanID)),
+				resource.TestCheckResourceAttr("data.netcup_user_vlans.other_server", "vlans.#", "0"),
+			),
+		},
+		resource.TestStep{
+			Config: testMockConfig(m, testMockUserVlan("two")),
+			Check: func(*terraform.State) error {
+				if got := m.VlanName(); got != "two" {
+					return fmt.Errorf("name = %q", got)
+				}
+				return nil
+			},
+		},
+		resource.TestStep{ResourceName: name, ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"timeouts"}},
+	))
+}
+
+func testMockUserVlanOnly(name string) string {
+	return fmt.Sprintf(`
+resource "netcup_user_vlan" "test" {
+  vlan_id = %d
+  name    = %q
+}
+`, mockapi.VlanID, name)
+}
+
+func TestMockUserVlanMissing(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockConfig(m, `
+resource "netcup_user_vlan" "test" {
+  vlan_id = 1
+  name    = "one"
+}
+`),
+		ExpectError: regexp.MustCompile("404"),
+	}))
+}
+
+func TestMockUserVlanSendsNoChangeForTheSameName(t *testing.T) {
+	m := mockapi.New(t)
+	m.RejectVlanChange()
+	resource.Test(t, testMockCase(
+		resource.TestStep{
+			Config: testMockConfig(m, testMockUserVlanOnly("default")),
+			Check: func(*terraform.State) error {
+				if got := m.VlanPuts(); got != 0 {
+					return fmt.Errorf("PUT requests = %d", got)
+				}
+				return nil
+			},
+		},
+		resource.TestStep{
+			Config:      testMockConfig(m, testMockUserVlanOnly("other")),
+			ExpectError: regexp.MustCompile("SHUTOFF"),
+		},
+	))
+}
+
+func TestMockUserVlanRemovedOutsideOfTerraform(t *testing.T) {
+	m := mockapi.New(t)
+	config := testMockConfig(m, testMockUserVlanOnly("one"))
+	resource.Test(t, testMockCase(
+		resource.TestStep{Config: config},
+		resource.TestStep{
+			PreConfig:          m.RemoveVlan,
+			Config:             config,
+			PlanOnly:           true,
+			ExpectNonEmptyPlan: true,
+		},
+	))
+}
+
+func TestMockUserVlanWithoutName(t *testing.T) {
+	m := mockapi.New(t)
+	config := testMockConfig(m, testMockUserVlanOnly("one"))
+	resource.Test(t, testMockCase(
+		resource.TestStep{Config: config},
+		resource.TestStep{
+			PreConfig:          m.ClearVlanName,
+			Config:             config,
+			PlanOnly:           true,
+			ExpectNonEmptyPlan: true,
+		},
+		resource.TestStep{Config: config, Check: resource.TestCheckResourceAttr("netcup_user_vlan.test", "name", "one")},
+		resource.TestStep{
+			PreConfig: m.ClearVlanName,
+			Config: testMockConfig(m, fmt.Sprintf(`
+data "netcup_user_vlan" "test" {
+  vlan_id = %d
+}
+`, mockapi.VlanID)),
+			Check: resource.TestCheckNoResourceAttr("data.netcup_user_vlan.test", "name"),
+		},
+	))
+}
+
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {
 	for attribute, object := range map[string]string{
 		"scp_refresh_token": `data "netcup_servers" "test" {}`,

@@ -139,6 +139,7 @@ type scpState struct {
 	tasks             map[string]*taskInfo
 	failedTask        *taskInfo
 	gpuAvailable      bool
+	vlans             map[int]*vlan
 	interfaces        map[int][]*serverInterface
 	guestAgentMissing bool
 	taskServers       map[string]int
@@ -158,6 +159,7 @@ func newSCPState() *scpState {
 			},
 		},
 		interfaces:  map[int][]*serverInterface{defaultServerID: {{mac: defaultMAC, driver: "VIRTIO"}}},
+		vlans:       map[int]*vlan{VlanID: {name: "default"}, ForeignVlanID: {name: "foreign", foreign: true}},
 		firewalls:   map[string]*serverFirewall{defaultMAC: {copied: []int{copiedPolicyID}, active: true}},
 		snapshots:   map[int]map[string]*snapshot{defaultServerID: {}},
 		policies:    map[int]*firewallPolicy{copiedPolicyID: {ID: copiedPolicyID, Name: "copied", Rules: []firewallRule{}}},
@@ -285,6 +287,10 @@ func (s *Server) scpHandlers() map[string]handler {
 		"GET " + pathServer:                   s.getServer,
 		"PATCH " + pathServer:                 s.patchServer,
 		"GET " + pathInterfaces:               s.listInterfaces,
+		"GET " + pathUser + "/vlans":          s.listUserVlans,
+		"GET " + pathUser + "/vlans/{vlanId}": s.getUserVlan,
+		"PUT " + pathUser + "/vlans/{vlanId}": s.putUserVlan,
+		"GET /api/v1/vlans/{vlanId}":          s.getVlan,
 		"POST " + pathInterfaces:              s.createInterface,
 		"GET " + pathInterfaces + "/{mac}":    s.getInterface,
 		"PUT " + pathInterfaces + "/{mac}":    s.putInterface,
@@ -1118,4 +1124,150 @@ func (s *Server) listTasks(c *call) (int, any) {
 		})
 	}
 	return http.StatusOK, page(all, c)
+}
+
+// VlanID identifies the VLAN every mock starts with. ForeignVlanID identifies a
+// VLAN of another user, which only GET /vlans/{vlanId} finds. That difference is
+// an assumption from the 404 texts of the specification.
+const (
+	VlanID        = 100
+	ForeignVlanID = 200
+)
+
+// vlan is a VLAN whose new name arrives after readsUntilRename reads, because
+// netcup answers an update with 202 and no task.
+type vlan struct {
+	name, pending    string
+	readsUntilRename int
+	foreign          bool
+	rejectChange     bool
+}
+
+// RemoveVlan makes the VLAN disappear outside of Terraform.
+func (s *Server) RemoveVlan() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.scp.vlans, VlanID)
+}
+
+// ClearVlanName makes netcup return the VLAN without a name.
+func (s *Server) ClearVlanName() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.vlans[VlanID].name = ""
+}
+
+// RejectVlanChange makes a change answer the documented 400.
+func (s *Server) RejectVlanChange() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.vlans[VlanID].rejectChange = true
+}
+
+// VlanPuts returns how many PUT requests the VLANs received.
+func (s *Server) VlanPuts() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	count := 0
+	for _, r := range s.requests {
+		if r.Method == http.MethodPut && strings.Contains(r.Path, "/vlans/") {
+			count++
+		}
+	}
+	return count
+}
+
+// DelayVlanRename makes a new VLAN name arrive only after this many reads.
+func (s *Server) DelayVlanRename(reads int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.vlans[VlanID].readsUntilRename = reads
+}
+
+// VlanName returns the name of the VLAN.
+func (s *Server) VlanName() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.scp.vlans[VlanID].name
+}
+
+func vlanJSON(id int, v *vlan) map[string]any {
+	var name any
+	if v.name != "" {
+		name = v.name
+	}
+	return map[string]any{
+		"vlanId": id, "name": name, "user": mockUser,
+		// The specification requires name without describing it.
+		"site":           map[string]any{"id": 1, "name": "nue", "city": "Nuernberg"},
+		"bandwidthClass": map[string]any{"id": 2, "name": "1G", "speedInMBit": 1000},
+	}
+}
+
+func (s *Server) readVlan(c *call) (int, *vlan) {
+	id, _ := strconv.Atoi(c.params["vlanId"])
+	v, ok := s.scp.vlans[id]
+	if !ok {
+		return id, nil
+	}
+	if v.pending != "" {
+		if v.readsUntilRename > 0 {
+			v.readsUntilRename--
+		} else {
+			v.name, v.pending = v.pending, ""
+		}
+	}
+	return id, v
+}
+
+func (s *Server) listUserVlans(c *call) (int, any) {
+	s.checkUser(c)
+	if c.query.Has("serverId") && c.query.Get("serverId") != strconv.Itoa(defaultServerID) {
+		return http.StatusOK, []map[string]any{}
+	}
+	out := []map[string]any{}
+	for _, id := range slices.Sorted(maps.Keys(s.scp.vlans)) {
+		if !s.scp.vlans[id].foreign {
+			out = append(out, vlanJSON(id, s.scp.vlans[id]))
+		}
+	}
+	return http.StatusOK, out
+}
+
+func (s *Server) getUserVlan(c *call) (int, any) {
+	s.checkUser(c)
+	if id, v := s.readVlan(c); v != nil && v.foreign {
+		return notFound()
+	} else if v != nil {
+		return http.StatusOK, vlanJSON(id, v)
+	}
+	return notFound()
+}
+
+func (s *Server) getVlan(c *call) (int, any) {
+	id, v := s.readVlan(c)
+	if v == nil {
+		return notFound()
+	}
+	return http.StatusOK, vlanJSON(id, v)
+}
+
+func (s *Server) putUserVlan(c *call) (int, any) {
+	s.checkUser(c)
+	id, _ := strconv.Atoi(c.params["vlanId"])
+	v, ok := s.scp.vlans[id]
+	if !ok || v.foreign {
+		return notFound()
+	}
+	if v.rejectChange {
+		return badRequest("Server must be in state SHUTOFF.")
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := c.decode(&body); err != nil {
+		return badRequest(err.Error())
+	}
+	v.pending = body.Name
+	return http.StatusAccepted, nil
 }

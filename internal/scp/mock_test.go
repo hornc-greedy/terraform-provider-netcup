@@ -516,3 +516,55 @@ func TestLockServerEndsWithContext(t *testing.T) {
 		t.Fatal("waiting for the lock must end with the context")
 	}
 }
+
+func TestMockVlans(t *testing.T) {
+	c, m := mockClient(t)
+	ctx := context.Background()
+	id := int64(mockapi.VlanID)
+	if v, err := c.GetVlan(ctx, id); err != nil || v.Name != "default" || *v.BandwidthClass.SpeedInMBit != 1000 {
+		t.Fatalf("GetVlan: %v %+v", err, v)
+	}
+	if v, err := c.GetUserVlan(ctx, id); err != nil || v.Site.City == "" || v.User.Username != "mock" {
+		t.Fatalf("GetUserVlan: %v %+v", err, v)
+	}
+	if _, err := c.GetUserVlan(ctx, 1); !IsNotFound(err) {
+		t.Fatalf("missing VLAN: %v", err)
+	}
+	if v, err := c.GetVlan(ctx, mockapi.ForeignVlanID); err != nil || v.Name != "foreign" {
+		t.Fatalf("GetVlan of another user: %v %+v", err, v)
+	}
+	if _, err := c.GetUserVlan(ctx, mockapi.ForeignVlanID); !IsNotFound(err) {
+		t.Fatalf("GetUserVlan of another user: %v", err)
+	}
+	all, err := c.ListUserVlans(ctx, nil)
+	if err != nil || len(all) != 1 {
+		t.Fatalf("ListUserVlans: %v %+v", err, all)
+	}
+	other := int64(1)
+	if none, err := c.ListUserVlans(ctx, &other); err != nil || len(none) != 0 {
+		t.Fatalf("VLANs of another server: %v %+v", err, none)
+	}
+	requests := m.Requests()
+	if got := requests[len(requests)-1].Query.Get("serverId"); got != "1" {
+		t.Fatalf("serverId = %q", got)
+	}
+}
+
+func TestMockVlanRenameWaitsForTheName(t *testing.T) {
+	c, m := mockClient(t)
+	m.DelayVlanRename(1)
+	v, err := c.UpdateUserVlan(context.Background(), mockapi.VlanID, "private")
+	if err != nil || v.Name != "private" {
+		t.Fatalf("UpdateUserVlan: %v %+v", err, v)
+	}
+}
+
+func TestVlanRenameEndsWithContext(t *testing.T) {
+	c, m := mockClient(t)
+	m.DelayVlanRename(1000)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := c.UpdateUserVlan(ctx, mockapi.VlanID, "private"); err == nil {
+		t.Fatal("waiting must end with the context")
+	}
+}
