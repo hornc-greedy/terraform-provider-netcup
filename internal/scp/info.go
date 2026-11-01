@@ -324,3 +324,44 @@ func (c *Client) AttachIso(ctx context.Context, serverID int, isoID *int64, user
 func (c *Client) DetachIso(ctx context.Context, serverID int) error {
 	return c.do(ctx, http.MethodDelete, serverPath(serverID)+"/iso", nil, nil)
 }
+
+// RescueSystemNotActive is the code of netcup for deactivating an inactive rescue
+// system.
+const RescueSystemNotActive = "server.rescuesystem.notactive"
+
+// RescueSystemStatus mirrors the RescueSystemStatus schema.
+type RescueSystemStatus struct {
+	Active   *bool  `json:"active"`
+	Password string `json:"password"`
+}
+
+// GetRescueSystem returns the status of the rescue system of a server.
+func (c *Client) GetRescueSystem(ctx context.Context, serverID int) (*RescueSystemStatus, error) {
+	var out RescueSystemStatus
+	if err := c.do(ctx, http.MethodGet, serverPath(serverID)+"/rescuesystem", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ActivateRescueSystem activates the rescue system of a shut down server and
+// waits for the task.
+// started tells whether netcup accepted the request, also if the task fails
+// afterwards.
+func (c *Client) ActivateRescueSystem(ctx context.Context, serverID int) (started bool, err error) {
+	var task TaskInfo
+	if err := c.do(ctx, http.MethodPost, serverPath(serverID)+"/rescuesystem", nil, &task); err != nil {
+		return false, err
+	}
+	return true, c.waitForTask(ctx, task.UUID)
+}
+
+// DeactivateRescueSystem deactivates the rescue system, which shuts the server
+// down, and waits for the task.
+func (c *Client) DeactivateRescueSystem(ctx context.Context, serverID int) error {
+	var task TaskInfo
+	if err := c.do(ctx, http.MethodDelete, serverPath(serverID)+"/rescuesystem", nil, &task); err != nil {
+		return err
+	}
+	return c.waitForTask(ctx, task.UUID)
+}

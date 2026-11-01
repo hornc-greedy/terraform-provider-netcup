@@ -14,3 +14,11 @@ func IsNotFound(err error) bool {
 	}
 	return false
 }
+
+// HasCode reports whether err is an *APIError with the given netcup code.
+func HasCode(err error, code string) bool {
+	if apiErr, ok := errors.AsType[*APIError](err); ok {
+		return apiErr.Code == code
+	}
+	return false
+}

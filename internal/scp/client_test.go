@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -377,6 +378,30 @@ func TestRepeatedUnauthorizedIsReported(t *testing.T) {
 	}
 	if requests != 2 {
 		t.Fatalf("requests = %d, want 2", requests)
+	}
+}
+
+func TestContentTypeOfBodylessRequests(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			_, _ = io.WriteString(w, `{"access_token":"AT","expires_in":300}`)
+			return
+		}
+		got = append(got, r.Method+" "+r.Header.Get("Content-Type"))
+	}))
+	t.Cleanup(srv.Close)
+	c := New("refresh-token")
+	c.BaseURL = srv.URL
+	c.TokenURL = srv.URL + "/token"
+	for _, method := range []string{http.MethodPost, http.MethodDelete, http.MethodGet} {
+		if err := c.do(context.Background(), method, "/x", nil, nil); err != nil {
+			t.Fatalf("%s: %v", method, err)
+		}
+	}
+	want := []string{"POST application/json", "DELETE ", "GET "}
+	if !slices.Equal(got, want) {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }
 

@@ -54,3 +54,12 @@ func (c *Client) PatchServer(ctx context.Context, id int, patch any) error {
 	}
 	return c.waitForTask(ctx, task.UUID)
 }
+
+// PatchServerState changes the power state and waits for the task.
+func (c *Client) PatchServerState(ctx context.Context, id int, state string) error {
+	var task TaskInfo
+	if err := c.send(ctx, "PATCH", "/servers/"+strconv.Itoa(id), "application/merge-patch+json", map[string]string{"state": state}, &task); err != nil {
+		return err
+	}
+	return c.waitForTask(ctx, task.UUID)
+}

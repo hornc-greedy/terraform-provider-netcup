@@ -218,6 +218,31 @@ func TestMockRetriesInjectedFailures(t *testing.T) {
 	}
 }
 
+func TestMockRejectsBodylessWriteWithoutContentType(t *testing.T) {
+	c, _ := mockClient(t)
+	token, err := c.ensureToken(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for method, path := range map[string]string{
+		http.MethodPost: fmt.Sprintf("/servers/%d/rescuesystem", mockapi.DefaultServerID),
+	} {
+		req, err := http.NewRequestWithContext(context.Background(), method, c.BaseURL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s %s: status = %d, want 400", method, path, res.StatusCode)
+		}
+	}
+}
+
 func TestMockServerInfo(t *testing.T) {
 	c, m := mockClient(t)
 	ctx := context.Background()
@@ -587,5 +612,35 @@ func TestMockIso(t *testing.T) {
 	}
 	if err := c.DetachIso(ctx, id); err != nil {
 		t.Fatalf("DetachIso: %v", err)
+	}
+}
+
+func TestMockRescueSystem(t *testing.T) {
+	c, m := mockClient(t)
+	ctx := context.Background()
+	const id = mockapi.DefaultServerID
+	if err := c.DeactivateRescueSystem(ctx, id); !HasCode(err, RescueSystemNotActive) {
+		t.Fatalf("deactivating an inactive rescue system: %v", err)
+	}
+	if started, err := c.ActivateRescueSystem(ctx, id); !HasCode(err, "server.rescuesystem.invalidstate") || started {
+		t.Fatalf("activating on a running server: %v %v", started, err)
+	}
+	m.ShutOff()
+	if started, err := c.ActivateRescueSystem(ctx, id); err != nil || !started {
+		t.Fatalf("ActivateRescueSystem: %v %v", started, err)
+	}
+	status, err := c.GetRescueSystem(ctx, id)
+	if err != nil || !*status.Active || status.Password == "" {
+		t.Fatalf("active: %v %+v", err, status)
+	}
+	if started, err := c.ActivateRescueSystem(ctx, id); err == nil || started {
+		t.Fatalf("activating an active rescue system: %v %v", started, err)
+	}
+	if err := c.DeactivateRescueSystem(ctx, id); err != nil {
+		t.Fatalf("DeactivateRescueSystem: %v", err)
+	}
+	status, err = c.GetRescueSystem(ctx, id)
+	if err != nil || *status.Active || status.Password != "" {
+		t.Fatalf("inactive: %v %+v", err, status)
 	}
 }

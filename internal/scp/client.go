@@ -201,7 +201,8 @@ func (c *Client) dropToken() {
 	c.accessToken = ""
 }
 
-// request sends one HTTP request.
+// request sends one HTTP request. netcup rejects a POST without a body if the
+// Content-Type is missing.
 func (c *Client) request(ctx context.Context, method, target, contentType, token string, payload []byte) (int, []byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, target, bytes.NewReader(payload))
 	if err != nil {
@@ -209,7 +210,7 @@ func (c *Client) request(ctx context.Context, method, target, contentType, token
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
-	if payload != nil {
+	if payload != nil || method == http.MethodPost {
 		req.Header.Set("Content-Type", contentType)
 	}
 

@@ -163,6 +163,7 @@ func (p *netcupProvider) Resources(_ context.Context) []func() resource.Resource
 		NewServerInterfaceResource,
 		NewUserVlanResource,
 		NewServerIsoResource,
+		NewServerRescueSystemResource,
 		NewCloudDNSRecordResource,
 		NewCloudDNSAcmeChallengeResource,
 	}
@@ -211,6 +212,7 @@ func (p *netcupProvider) DataSources(_ context.Context) []func() datasource.Data
 func (p *netcupProvider) EphemeralResources(_ context.Context) []func() ephemeral.EphemeralResource {
 	return []func() ephemeral.EphemeralResource{
 		NewServerGPUDriverEphemeralResource,
+		NewServerRescueSystemEphemeralResource,
 	}
 }
 

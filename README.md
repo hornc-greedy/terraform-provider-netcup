@@ -103,7 +103,7 @@ The refresh token stays valid as long as it is used at least once every 30 days.
 | CloudDNS | `netcup_clouddns_record`, `netcup_clouddns_acme_challenge` | `netcup_clouddns_record`, `netcup_clouddns_domain`, `netcup_clouddns_domains`, `netcup_clouddns_records`, `netcup_clouddns_revision`, `netcup_clouddns_revisions`, `netcup_clouddns_record_types`, `netcup_clouddns_acme_challenges` |  |  |
 | Servers | `netcup_server_settings` | `netcup_servers`, `netcup_server`, `netcup_server_guest_agent`, `netcup_server_guest_agent_status` |  |  |
 | Disks |  | `netcup_server_disks`, `netcup_server_disk`, `netcup_server_disk_supported_drivers` |  |  |
-| Images, ISO and rescue | `netcup_server_iso` | `netcup_server_image_flavours`, `netcup_server_iso_images` | `netcup_server_gpu_driver` |  |
+| Images, ISO and rescue | `netcup_server_iso`, `netcup_server_rescue_system` | `netcup_server_image_flavours`, `netcup_server_iso_images` | `netcup_server_rescue_system`, `netcup_server_gpu_driver` |  |
 | Interfaces and reverse DNS | `netcup_server_interface`, `netcup_reverse_dns` | `netcup_server_interface`, `netcup_server_interfaces` |  |  |
 | Metrics and logs |  | `netcup_server_metrics_cpu`, `netcup_server_metrics_disk`, `netcup_server_metrics_network`, `netcup_server_metrics_network_packet`, `netcup_server_logs` |  |  |
 | Snapshots | `netcup_server_snapshot` | `netcup_server_snapshots`, `netcup_server_snapshot_dryrun` |  |  |

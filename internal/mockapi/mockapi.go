@@ -267,6 +267,13 @@ func (s *Server) serveSpec(w http.ResponseWriter, r *http.Request, body []byte, 
 	}
 	key := r.Method + " " + route.Path
 
+	// netcup rejects a POST without a body when the Content-Type is missing. The
+	// specification does not mention it.
+	if router == s.router && len(body) == 0 && r.Method == http.MethodPost && r.Header.Get("Content-Type") == "" {
+		writeJSON(w, http.StatusBadRequest, responseError{Code: "error.content.type.invalid", Message: "The HTTP header Content-Type must be 'type/subtype'"})
+		return
+	}
+
 	input := &openapi3filter.RequestValidationInput{
 		Request: checked, PathParams: params, Route: route,
 		Options: &openapi3filter.Options{

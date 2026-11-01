@@ -140,6 +140,7 @@ type scpState struct {
 	failedTask        *taskInfo
 	gpuAvailable      bool
 	attachedIso       map[int]string
+	rescueActive      map[int]bool
 	isoBody           map[int]string
 	vlans             map[int]*vlan
 	interfaces        map[int][]*serverInterface
@@ -160,19 +161,20 @@ func newSCPState() *scpState {
 				},
 			},
 		},
-		interfaces:  map[int][]*serverInterface{defaultServerID: {{mac: defaultMAC, driver: "VIRTIO"}}},
-		vlans:       map[int]*vlan{VlanID: {name: "default"}, ForeignVlanID: {name: "foreign", foreign: true}},
-		attachedIso: map[int]string{},
-		isoBody:     map[int]string{},
-		firewalls:   map[string]*serverFirewall{defaultMAC: {copied: []int{copiedPolicyID}, active: true}},
-		snapshots:   map[int]map[string]*snapshot{defaultServerID: {}},
-		policies:    map[int]*firewallPolicy{copiedPolicyID: {ID: copiedPolicyID, Name: "copied", Rules: []firewallRule{}}},
-		sshKeys:     map[int]*sshKey{},
-		rdns:        map[string]string{},
-		failoverV4:  map[int]*failoverIP{failoverV4ID: {ID: failoverV4ID, Address: defaultFailoverV4, ServerID: defaultServerID}},
-		failoverV6:  map[int]*failoverIP{failoverV6ID: {ID: failoverV6ID, Address: "2001:db8:1::", ServerID: 0}},
-		tasks:       map[string]*taskInfo{},
-		taskServers: map[string]int{},
+		interfaces:   map[int][]*serverInterface{defaultServerID: {{mac: defaultMAC, driver: "VIRTIO"}}},
+		vlans:        map[int]*vlan{VlanID: {name: "default"}, ForeignVlanID: {name: "foreign", foreign: true}},
+		attachedIso:  map[int]string{},
+		rescueActive: map[int]bool{},
+		isoBody:      map[int]string{},
+		firewalls:    map[string]*serverFirewall{defaultMAC: {copied: []int{copiedPolicyID}, active: true}},
+		snapshots:    map[int]map[string]*snapshot{defaultServerID: {}},
+		policies:     map[int]*firewallPolicy{copiedPolicyID: {ID: copiedPolicyID, Name: "copied", Rules: []firewallRule{}}},
+		sshKeys:      map[int]*sshKey{},
+		rdns:         map[string]string{},
+		failoverV4:   map[int]*failoverIP{failoverV4ID: {ID: failoverV4ID, Address: defaultFailoverV4, ServerID: defaultServerID}},
+		failoverV6:   map[int]*failoverIP{failoverV6ID: {ID: failoverV6ID, Address: "2001:db8:1::", ServerID: 0}},
+		tasks:        map[string]*taskInfo{},
+		taskServers:  map[string]int{},
 	}
 }
 
@@ -294,23 +296,26 @@ func (s *Server) scpHandlers() map[string]handler {
 		"DELETE /api/v1/rdns/ipv4/{ip}": s.deleteRDNS,
 		"DELETE /api/v1/rdns/ipv6/{ip}": s.deleteRDNS,
 
-		"GET /api/v1/servers":                 s.listServers,
-		"GET " + pathServer:                   s.getServer,
-		"PATCH " + pathServer:                 s.patchServer,
-		"GET " + pathInterfaces:               s.listInterfaces,
-		"POST " + pathServer + "/iso":         s.attachIso,
-		"GET " + pathServer + "/iso":          s.getIso,
-		"DELETE " + pathServer + "/iso":       s.detachIso,
-		"GET " + pathUser + "/vlans":          s.listUserVlans,
-		"GET " + pathUser + "/vlans/{vlanId}": s.getUserVlan,
-		"PUT " + pathUser + "/vlans/{vlanId}": s.putUserVlan,
-		"GET /api/v1/vlans/{vlanId}":          s.getVlan,
-		"POST " + pathInterfaces:              s.createInterface,
-		"GET " + pathInterfaces + "/{mac}":    s.getInterface,
-		"PUT " + pathInterfaces + "/{mac}":    s.putInterface,
-		"DELETE " + pathInterfaces + "/{mac}": s.deleteInterface,
-		"GET " + pathFirewall:                 s.getFirewall,
-		"PUT " + pathFirewall:                 s.putFirewall,
+		"GET /api/v1/servers":                    s.listServers,
+		"GET " + pathServer:                      s.getServer,
+		"PATCH " + pathServer:                    s.patchServer,
+		"GET " + pathInterfaces:                  s.listInterfaces,
+		"POST " + pathServer + "/iso":            s.attachIso,
+		"GET " + pathServer + "/iso":             s.getIso,
+		"DELETE " + pathServer + "/iso":          s.detachIso,
+		"POST " + pathServer + "/rescuesystem":   s.activateRescue,
+		"GET " + pathServer + "/rescuesystem":    s.getRescue,
+		"DELETE " + pathServer + "/rescuesystem": s.deactivateRescue,
+		"GET " + pathUser + "/vlans":             s.listUserVlans,
+		"GET " + pathUser + "/vlans/{vlanId}":    s.getUserVlan,
+		"PUT " + pathUser + "/vlans/{vlanId}":    s.putUserVlan,
+		"GET /api/v1/vlans/{vlanId}":             s.getVlan,
+		"POST " + pathInterfaces:                 s.createInterface,
+		"GET " + pathInterfaces + "/{mac}":       s.getInterface,
+		"PUT " + pathInterfaces + "/{mac}":       s.putInterface,
+		"DELETE " + pathInterfaces + "/{mac}":    s.deleteInterface,
+		"GET " + pathFirewall:                    s.getFirewall,
+		"PUT " + pathFirewall:                    s.putFirewall,
 
 		"POST " + pathSnapshots:  s.createSnapshot,
 		"GET " + pathSnapshot:    s.getSnapshot,
@@ -1300,6 +1305,27 @@ func (s *Server) SetAttachedIso(name string) {
 	s.scp.attachedIso[defaultServerID] = name
 }
 
+// RescueActive reports whether the rescue system of the default server is active.
+func (s *Server) RescueActive() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.scp.rescueActive[defaultServerID]
+}
+
+// SetRescueActive changes the rescue system outside of Terraform.
+func (s *Server) SetRescueActive(active bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.rescueActive[defaultServerID] = active
+}
+
+// ShutOff sets the default server to state SHUTOFF.
+func (s *Server) ShutOff() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.servers[defaultServerID].live.State = "SHUTOFF"
+}
+
 func (s *Server) attachIso(c *call) (int, any) {
 	v := s.scpServer(c)
 	if v == nil {
@@ -1342,4 +1368,59 @@ func (s *Server) detachIso(c *call) (int, any) {
 		delete(s.scp.attachedIso, v.ID)
 	}
 	return http.StatusNoContent, nil
+}
+
+func (s *Server) activateRescue(c *call) (int, any) {
+	v := s.scpServer(c)
+	if v == nil {
+		return notFound()
+	}
+	if s.scp.rescueActive[v.ID] {
+		return badRequest("Rescue system currently active.")
+	}
+	// netcup answers so, the specification does not say it.
+	if v.live.State != "SHUTOFF" {
+		return http.StatusBadRequest, responseError{Code: "server.rescuesystem.invalidstate", Message: "Server must be in state 'SHUTOFF'. (current state: '" + v.live.State + "')"}
+	}
+	s.scp.rescueActive[v.ID] = true
+	return http.StatusAccepted, s.scp.startTask("ServerActivateRescueSystem", v.ID)
+}
+
+func (s *Server) getRescue(c *call) (int, any) {
+	v := s.scpServer(c)
+	if v == nil {
+		return notFound()
+	}
+	if !s.scp.rescueActive[v.ID] {
+		return http.StatusOK, map[string]any{"active": false, "password": nil}
+	}
+	return http.StatusOK, map[string]any{"active": true, "password": "mock-rescue-password"}
+}
+
+func (s *Server) deactivateRescue(c *call) (int, any) {
+	v := s.scpServer(c)
+	if v == nil {
+		return notFound()
+	}
+	// netcup answers with this code and shuts the server down, the specification
+	// does not say either.
+	if !s.scp.rescueActive[v.ID] {
+		return http.StatusBadRequest, responseError{Code: "server.rescuesystem.notactive", Message: "Rescue system is currently not active."}
+	}
+	s.scp.rescueActive[v.ID] = false
+	v.live.State = "SHUTOFF"
+	return http.StatusAccepted, s.scp.startTask("ServerDeactivateRescueSystem", v.ID)
+}
+
+// PatchBodies returns the bodies of all PATCH requests in the order they came.
+func (s *Server) PatchBodies() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []string
+	for _, r := range s.requests {
+		if r.Method == http.MethodPatch {
+			out = append(out, r.Body)
+		}
+	}
+	return out
 }

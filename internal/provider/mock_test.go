@@ -1148,6 +1148,148 @@ resource "netcup_server_iso" "test" {
 	}))
 }
 
+func testMockRescueSystem() string {
+	return fmt.Sprintf(`
+resource "netcup_server_rescue_system" "test" {
+  server_id = %d
+}
+`, mockapi.DefaultServerID)
+}
+
+func TestMockServerRescueSystem(t *testing.T) {
+	m := mockapi.New(t)
+	const name = "netcup_server_rescue_system.test"
+	config := testMockConfig(m, testMockRescueSystem())
+	testCase := testMockCase(
+		resource.TestStep{
+			Config: config,
+			Check: func(*terraform.State) error {
+				if !m.RescueActive() {
+					return fmt.Errorf("rescue system is not active")
+				}
+				return nil
+			},
+		},
+		resource.TestStep{ResourceName: name, ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"timeouts"}},
+		resource.TestStep{
+			PreConfig: func() { m.SetRescueActive(false) },
+			Config:    config, PlanOnly: true, ExpectNonEmptyPlan: true,
+		},
+		// Activates again, so that the destroy has something to deactivate.
+		resource.TestStep{Config: config},
+	)
+	testCase.CheckDestroy = func(*terraform.State) error {
+		if m.RescueActive() {
+			return fmt.Errorf("rescue system still active after destroy")
+		}
+		return nil
+	}
+	resource.Test(t, testCase)
+}
+
+// testMockPatches checks the bodies of all PATCH requests so far.
+func testMockPatches(m *mockapi.Server, want ...string) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		if got := m.PatchBodies(); !slices.Equal(got, want) {
+			return fmt.Errorf("PATCH bodies = %v, want %v", got, want)
+		}
+		return nil
+	}
+}
+
+// netcup activates the rescue system only on a shut down server and shuts the
+// server down to deactivate it, so a running server runs again afterwards.
+func TestMockServerRescueSystemRestartsRunningServer(t *testing.T) {
+	m := mockapi.New(t)
+	const off, on = `{"state":"OFF"}`, `{"state":"ON"}`
+	testCase := testMockCase(resource.TestStep{
+		Config: testMockConfig(m, testMockRescueSystem()),
+		Check:  testMockPatches(m, off, on),
+	})
+	testCase.CheckDestroy = testMockPatches(m, off, on, on)
+	resource.Test(t, testCase)
+}
+
+func TestMockServerRescueSystemKeepsShutOffServer(t *testing.T) {
+	m := mockapi.New(t)
+	m.ShutOff()
+	testCase := testMockCase(resource.TestStep{
+		Config: testMockConfig(m, testMockRescueSystem()),
+		Check:  testMockPatches(m),
+	})
+	testCase.CheckDestroy = testMockPatches(m)
+	resource.Test(t, testCase)
+}
+
+func TestMockServerRescueSystemAlreadyActive(t *testing.T) {
+	m := mockapi.New(t)
+	m.SetRescueActive(true)
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config:      testMockConfig(m, testMockRescueSystem()),
+		ExpectError: regexp.MustCompile(`terraform\s+import`),
+	}))
+}
+
+// The refresh of the second step removes the resource, so this covers an empty
+// configuration after deactivation rather than Delete itself.
+func TestMockServerRescueSystemDestroyAfterDeactivation(t *testing.T) {
+	m := mockapi.New(t)
+	config := testMockConfig(m, testMockRescueSystem())
+	resource.Test(t, testMockCase(
+		resource.TestStep{Config: config},
+		resource.TestStep{
+			PreConfig: func() { m.SetRescueActive(false) },
+			Config:    testMockConfig(m, ""),
+		},
+	))
+}
+
+func TestMockServerRescueSystemFailedTaskKeepsState(t *testing.T) {
+	m := mockapi.New(t)
+	config := testMockConfig(m, testMockRescueSystem())
+	m.FailTasks("disk full")
+	resource.Test(t, testMockCase(
+		resource.TestStep{Config: config, ExpectError: regexp.MustCompile("disk full")},
+		resource.TestStep{
+			PreConfig: m.ClearFailedTasks,
+			Config:    config, PlanOnly: true, ExpectNonEmptyPlan: true,
+		},
+	))
+}
+
+func TestMockServerRescueSystemEphemeral(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, resource.TestCase{
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_10_0)},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
+			"netcup": testAccProtoV6ProviderFactories["netcup"],
+			"echo":   echoprovider.NewProviderServer(),
+		},
+		Steps: []resource.TestStep{{
+			Config: testMockConfig(m, fmt.Sprintf(`
+resource "netcup_server_rescue_system" "test" {
+  server_id = %d
+}
+
+ephemeral "netcup_server_rescue_system" "test" {
+  server_id  = netcup_server_rescue_system.test.server_id
+  depends_on = [netcup_server_rescue_system.test]
+}
+
+provider "echo" {
+  data = ephemeral.netcup_server_rescue_system.test
+}
+
+resource "echo" "test" {}
+`, mockapi.DefaultServerID)),
+			ConfigStateChecks: []statecheck.StateCheck{
+				statecheck.ExpectKnownValue("echo.test", tfjsonpath.New("data").AtMapKey("active"), knownvalue.Bool(true)),
+				statecheck.ExpectKnownValue("echo.test", tfjsonpath.New("data").AtMapKey("password"), knownvalue.StringExact("mock-rescue-password")),
+			},
+		}},
+	})
+}
+
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {
 	for attribute, object := range map[string]string{
 		"scp_refresh_token": `data "netcup_servers" "test" {}`,
