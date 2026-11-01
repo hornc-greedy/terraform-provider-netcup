@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
 	fwprov "github.com/hashicorp/terraform-plugin-framework/provider"
 	provschema "github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -18,7 +19,10 @@ import (
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/scp"
 )
 
-var _ fwprov.Provider = (*netcupProvider)(nil)
+var (
+	_ fwprov.Provider                       = (*netcupProvider)(nil)
+	_ fwprov.ProviderWithEphemeralResources = (*netcupProvider)(nil)
+)
 
 type netcupProvider struct {
 	version string
@@ -142,6 +146,7 @@ func (p *netcupProvider) Configure(ctx context.Context, req fwprov.ConfigureRequ
 
 	resp.ResourceData = data
 	resp.DataSourceData = data
+	resp.EphemeralResourceData = data
 }
 
 func (p *netcupProvider) Resources(_ context.Context) []func() resource.Resource {
@@ -193,6 +198,12 @@ func (p *netcupProvider) DataSources(_ context.Context) []func() datasource.Data
 		NewCloudDNSRevisionsDataSource,
 		NewCloudDNSRecordTypesDataSource,
 		NewCloudDNSAcmeChallengesDataSource,
+	}
+}
+
+func (p *netcupProvider) EphemeralResources(_ context.Context) []func() ephemeral.EphemeralResource {
+	return []func() ephemeral.EphemeralResource{
+		NewServerGPUDriverEphemeralResource,
 	}
 }
 

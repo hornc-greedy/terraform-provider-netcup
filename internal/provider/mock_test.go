@@ -10,8 +10,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	"github.com/hashicorp/terraform-plugin-testing/echoprovider"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/mockapi"
 )
@@ -695,6 +701,37 @@ data "netcup_server_snapshot_dryrun" "offline" {
 `, mockapi.DefaultServerID)),
 		ExpectError: regexp.MustCompile(`Missing disk_name`),
 	}))
+}
+
+// The echo provider is the official way to read an ephemeral value in a test.
+func TestMockServerGPUDriverEphemeral(t *testing.T) {
+	m := mockapi.New(t)
+	m.EnableGPU()
+	resource.Test(t, resource.TestCase{
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_10_0)},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
+			"netcup": testAccProtoV6ProviderFactories["netcup"],
+			"echo":   echoprovider.NewProviderServer(),
+		},
+		Steps: []resource.TestStep{{
+			Config: testMockConfig(m, fmt.Sprintf(`
+ephemeral "netcup_server_gpu_driver" "test" {
+  server_id = %d
+}
+
+provider "echo" {
+  data = ephemeral.netcup_server_gpu_driver.test
+}
+
+resource "echo" "test" {}
+`, mockapi.DefaultServerID)),
+			ConfigStateChecks: []statecheck.StateCheck{
+				statecheck.ExpectKnownValue("echo.test", tfjsonpath.New("data").AtMapKey("filename"), knownvalue.StringExact("driver.run")),
+				statecheck.ExpectKnownValue("echo.test", tfjsonpath.New("data").AtMapKey("presigned_url"), knownvalue.StringRegexp(regexp.MustCompile("signature"))),
+				statecheck.ExpectKnownValue("echo.test", tfjsonpath.New("data").AtMapKey("headers").AtMapKey("x-amz-checksum-mode").AtSliceIndex(0), knownvalue.StringExact("ENABLED")),
+			},
+		}},
+	})
 }
 
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {

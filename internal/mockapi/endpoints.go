@@ -30,7 +30,7 @@ var Endpoints = []Endpoint{
 	{"GET", "/api/v1/servers/{serverId}/disks/supported-drivers", "netcup_server_disk_supported_drivers"},
 	{"GET", "/api/v1/servers/{serverId}/disks/{diskName}", "netcup_server_disk"},
 	{"POST", "/api/v1/servers/{serverId}/disks/{diskName}:format", ""},
-	{"GET", "/api/v1/servers/{serverId}/gpu-driver", ""},
+	{"GET", "/api/v1/servers/{serverId}/gpu-driver", "netcup_server_gpu_driver (ephemeral)"},
 	{"GET", "/api/v1/servers/{serverId}/guest-agent", "netcup_server_guest_agent"},
 	{"GET", "/api/v1/servers/{serverId}/guest-agent/status", "netcup_server_guest_agent_status"},
 	{"POST", "/api/v1/servers/{serverId}/image", ""},
