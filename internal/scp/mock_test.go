@@ -568,3 +568,24 @@ func TestVlanRenameEndsWithContext(t *testing.T) {
 		t.Fatal("waiting must end with the context")
 	}
 }
+
+func TestMockIso(t *testing.T) {
+	c, _ := mockClient(t)
+	ctx := context.Background()
+	const id = mockapi.DefaultServerID
+	iso, err := c.GetIso(ctx, id)
+	if err != nil || iso.IsoAttached || iso.Iso != "" {
+		t.Fatalf("no ISO: %v %+v", err, iso)
+	}
+	name := "uploaded.iso"
+	if started, err := c.AttachIso(ctx, id, nil, &name, nil); err != nil || !started {
+		t.Fatalf("AttachIso: %v %v", started, err)
+	}
+	iso, err = c.GetIso(ctx, id)
+	if err != nil || !iso.IsoAttached || iso.Iso != name {
+		t.Fatalf("attached: %v %+v", err, iso)
+	}
+	if err := c.DetachIso(ctx, id); err != nil {
+		t.Fatalf("DetachIso: %v", err)
+	}
+}

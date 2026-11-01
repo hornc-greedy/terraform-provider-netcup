@@ -1014,6 +1014,140 @@ data "netcup_user_vlan" "test" {
 	))
 }
 
+func testMockServerIso() string {
+	return fmt.Sprintf(`
+resource "netcup_server_iso" "test" {
+  server_id                   = %d
+  iso_id                      = 3
+  change_boot_device_to_cdrom = true
+}
+`, mockapi.DefaultServerID)
+}
+
+func TestMockServerIso(t *testing.T) {
+	m := mockapi.New(t)
+	const name = "netcup_server_iso.test"
+	config := testMockConfig(m, testMockServerIso())
+	testCase := testMockCase(
+		resource.TestStep{
+			Config: config,
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr(name, "iso", "rescue.iso"),
+				func(*terraform.State) error {
+					if _, body := m.AttachedIso(); !strings.Contains(body, `"isoId":3`) || !strings.Contains(body, `"changeBootDeviceToCdrom":true`) {
+						return fmt.Errorf("body = %s", body)
+					}
+					return nil
+				},
+			),
+		},
+		resource.TestStep{
+			ResourceName: name, ImportState: true, ImportStateVerify: true,
+			ImportStateVerifyIgnore: []string{"timeouts", "iso_id", "change_boot_device_to_cdrom"},
+		},
+		// Detached outside of Terraform, the plan attaches it again.
+		resource.TestStep{
+			PreConfig:          func() { m.SetAttachedIso("") },
+			Config:             config,
+			PlanOnly:           true,
+			ExpectNonEmptyPlan: true,
+		},
+		// Another ISO outside of Terraform is drift as well.
+		resource.TestStep{
+			PreConfig:          func() { m.SetAttachedIso("other.iso") },
+			Config:             config,
+			PlanOnly:           true,
+			ExpectNonEmptyPlan: true,
+		},
+		resource.TestStep{PreConfig: func() { m.SetAttachedIso("") }, Config: config},
+	)
+	testCase.CheckDestroy = func(*terraform.State) error {
+		if got, _ := m.AttachedIso(); got != "" {
+			return fmt.Errorf("ISO after destroy: %s", got)
+		}
+		return nil
+	}
+	resource.Test(t, testCase)
+}
+
+func TestMockServerIsoUserName(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockConfig(m, fmt.Sprintf(`
+resource "netcup_server_iso" "test" {
+  server_id     = %d
+  user_iso_name = "uploaded.iso"
+}
+`, mockapi.DefaultServerID)),
+		Check: resource.TestCheckResourceAttr("netcup_server_iso.test", "iso", "uploaded.iso"),
+	}))
+}
+
+func TestMockServerIsoNeedsExactlyOneName(t *testing.T) {
+	m := mockapi.New(t)
+	for _, attributes := range []string{"iso_id = 3\n  user_iso_name = \"uploaded.iso\"", ""} {
+		resource.Test(t, testMockCase(resource.TestStep{
+			Config: testMockConfig(m, fmt.Sprintf(`
+resource "netcup_server_iso" "test" {
+  server_id = %d
+  %s
+}
+`, mockapi.DefaultServerID, attributes)),
+			ExpectError: regexp.MustCompile("Invalid Attribute Combination"),
+		}))
+	}
+}
+
+func TestMockServerIsoRefusesToReplaceAttachedIso(t *testing.T) {
+	m := mockapi.New(t)
+	m.SetAttachedIso("manual.iso")
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config:      testMockConfig(m, testMockServerIso()),
+		ExpectError: regexp.MustCompile("ISO already attached"),
+	}))
+	if got, _ := m.AttachedIso(); got != "manual.iso" {
+		t.Fatalf("ISO = %s", got)
+	}
+}
+
+// A failed task leaves the resource tainted, so the next plan replaces it.
+func TestMockServerIsoFailedTaskKeepsState(t *testing.T) {
+	m := mockapi.New(t)
+	config := testMockConfig(m, testMockServerIso())
+	m.FailTasks("disk full")
+	resource.Test(t, testMockCase(
+		resource.TestStep{Config: config, ExpectError: regexp.MustCompile("disk full")},
+		resource.TestStep{
+			PreConfig: m.ClearFailedTasks,
+			Config:    config, PlanOnly: true, ExpectNonEmptyPlan: true,
+		},
+	))
+}
+
+func TestMockServerIsoImportWithIgnoreChanges(t *testing.T) {
+	m := mockapi.New(t)
+	m.SetAttachedIso("rescue.iso")
+	id := strconv.Itoa(mockapi.DefaultServerID)
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockConfig(m, `
+import {
+  to = netcup_server_iso.test
+  id = "`+id+`"
+}
+
+resource "netcup_server_iso" "test" {
+  server_id = `+id+`
+  iso_id    = 3
+
+  lifecycle {
+    ignore_changes = [iso_id, user_iso_name, change_boot_device_to_cdrom]
+  }
+}
+`),
+		Check: resource.TestCheckResourceAttr("netcup_server_iso.test", "iso", "rescue.iso"),
+	}))
+}
+
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {
 	for attribute, object := range map[string]string{
 		"scp_refresh_token": `data "netcup_servers" "test" {}`,

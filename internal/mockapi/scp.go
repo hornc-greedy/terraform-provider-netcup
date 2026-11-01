@@ -139,6 +139,8 @@ type scpState struct {
 	tasks             map[string]*taskInfo
 	failedTask        *taskInfo
 	gpuAvailable      bool
+	attachedIso       map[int]string
+	isoBody           map[int]string
 	vlans             map[int]*vlan
 	interfaces        map[int][]*serverInterface
 	guestAgentMissing bool
@@ -160,6 +162,8 @@ func newSCPState() *scpState {
 		},
 		interfaces:  map[int][]*serverInterface{defaultServerID: {{mac: defaultMAC, driver: "VIRTIO"}}},
 		vlans:       map[int]*vlan{VlanID: {name: "default"}, ForeignVlanID: {name: "foreign", foreign: true}},
+		attachedIso: map[int]string{},
+		isoBody:     map[int]string{},
 		firewalls:   map[string]*serverFirewall{defaultMAC: {copied: []int{copiedPolicyID}, active: true}},
 		snapshots:   map[int]map[string]*snapshot{defaultServerID: {}},
 		policies:    map[int]*firewallPolicy{copiedPolicyID: {ID: copiedPolicyID, Name: "copied", Rules: []firewallRule{}}},
@@ -184,6 +188,13 @@ func (s *scpState) startTask(name string, serverID int) *taskInfo {
 	s.tasks[t.UUID] = t
 	s.taskServers[t.UUID] = serverID
 	return t
+}
+
+// ClearFailedTasks lets tasks succeed again.
+func (s *Server) ClearFailedTasks() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.failedTask = nil
 }
 
 // FailTasks makes every task end in state ERROR with the given error.
@@ -287,6 +298,9 @@ func (s *Server) scpHandlers() map[string]handler {
 		"GET " + pathServer:                   s.getServer,
 		"PATCH " + pathServer:                 s.patchServer,
 		"GET " + pathInterfaces:               s.listInterfaces,
+		"POST " + pathServer + "/iso":         s.attachIso,
+		"GET " + pathServer + "/iso":          s.getIso,
+		"DELETE " + pathServer + "/iso":       s.detachIso,
 		"GET " + pathUser + "/vlans":          s.listUserVlans,
 		"GET " + pathUser + "/vlans/{vlanId}": s.getUserVlan,
 		"PUT " + pathUser + "/vlans/{vlanId}": s.putUserVlan,
@@ -1270,4 +1284,62 @@ func (s *Server) putUserVlan(c *call) (int, any) {
 	}
 	v.pending = body.Name
 	return http.StatusAccepted, nil
+}
+
+// AttachedIso returns the ISO of the default server and its attach body.
+func (s *Server) AttachedIso() (name, body string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.scp.attachedIso[defaultServerID], s.scp.isoBody[defaultServerID]
+}
+
+// SetAttachedIso changes the ISO of the default server outside of Terraform.
+func (s *Server) SetAttachedIso(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.attachedIso[defaultServerID] = name
+}
+
+func (s *Server) attachIso(c *call) (int, any) {
+	v := s.scpServer(c)
+	if v == nil {
+		s.checkServer(c)
+		return validationError("server not found")
+	}
+	var body struct {
+		IsoID       *int    `json:"isoId"`
+		UserIsoName *string `json:"userIsoName"`
+	}
+	if err := c.decode(&body); err != nil {
+		return validationError(err.Error())
+	}
+	// Assumptions, the specification does not say what iso contains, that both or
+	// no name are invalid, or that an attached ISO is replaced without an error.
+	switch {
+	case body.IsoID != nil && body.UserIsoName == nil:
+		s.scp.attachedIso[v.ID] = "rescue.iso"
+	case body.UserIsoName != nil && body.IsoID == nil:
+		s.scp.attachedIso[v.ID] = *body.UserIsoName
+	default:
+		return validationError("exactly one of isoId and userIsoName is needed")
+	}
+	s.scp.isoBody[v.ID] = string(c.body)
+	return http.StatusAccepted, s.scp.startTask("ServerAttachIso", v.ID)
+}
+
+func (s *Server) getIso(c *call) (int, any) {
+	v := s.scpServer(c)
+	if v == nil || s.scp.attachedIso[v.ID] == "" {
+		s.checkServer(c)
+		return http.StatusOK, map[string]any{"isoAttached": false, "iso": nil}
+	}
+	return http.StatusOK, map[string]any{"isoAttached": true, "iso": s.scp.attachedIso[v.ID]}
+}
+
+func (s *Server) detachIso(c *call) (int, any) {
+	s.checkServer(c)
+	if v := s.scpServer(c); v != nil {
+		delete(s.scp.attachedIso, v.ID)
+	}
+	return http.StatusNoContent, nil
 }

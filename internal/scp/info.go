@@ -285,3 +285,42 @@ func (c *Client) ListTasks(ctx context.Context, filter TaskFilter, page Page) ([
 	}
 	return listPage[TaskInfoMinimal](ctx, c, "/tasks", values, page)
 }
+
+// Iso mirrors the Iso schema.
+type Iso struct {
+	IsoAttached bool   `json:"isoAttached"`
+	Iso         string `json:"iso"`
+}
+
+// serverAttachIso mirrors the ServerAttachIso schema.
+type serverAttachIso struct {
+	IsoID                   *int64  `json:"isoId,omitempty"`
+	UserIsoName             *string `json:"userIsoName,omitempty"`
+	ChangeBootDeviceToCdrom *bool   `json:"changeBootDeviceToCdrom,omitempty"`
+}
+
+// GetIso returns the ISO attached to a server.
+func (c *Client) GetIso(ctx context.Context, serverID int) (*Iso, error) {
+	var out Iso
+	if err := c.do(ctx, http.MethodGet, serverPath(serverID)+"/iso", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// AttachIso attaches an ISO and waits for the task. Exactly one of isoID and
+// userIsoName names the ISO. started tells whether netcup accepted the request,
+// also if the task fails afterwards.
+func (c *Client) AttachIso(ctx context.Context, serverID int, isoID *int64, userIsoName *string, changeBootDeviceToCdrom *bool) (started bool, err error) {
+	var task TaskInfo
+	body := serverAttachIso{IsoID: isoID, UserIsoName: userIsoName, ChangeBootDeviceToCdrom: changeBootDeviceToCdrom}
+	if err := c.do(ctx, http.MethodPost, serverPath(serverID)+"/iso", body, &task); err != nil {
+		return false, err
+	}
+	return true, c.waitForTask(ctx, task.UUID)
+}
+
+// DetachIso detaches the ISO of a server.
+func (c *Client) DetachIso(ctx context.Context, serverID int) error {
+	return c.do(ctx, http.MethodDelete, serverPath(serverID)+"/iso", nil, nil)
+}
