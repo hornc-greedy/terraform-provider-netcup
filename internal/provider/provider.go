@@ -160,6 +160,7 @@ func (p *netcupProvider) Resources(_ context.Context) []func() resource.Resource
 		NewServerFirewallResource,
 		NewFailoverIPRouteResource,
 		NewServerSettingsResource,
+		NewServerInterfaceResource,
 		NewCloudDNSRecordResource,
 		NewCloudDNSAcmeChallengeResource,
 	}
@@ -171,6 +172,7 @@ func (p *netcupProvider) DataSources(_ context.Context) []func() datasource.Data
 		NewServersDataSource,
 		NewServerDataSource,
 		NewServerInterfacesDataSource,
+		NewServerInterfaceDataSource,
 		NewMaintenanceDataSource,
 		NewSSHKeysDataSource,
 		NewFirewallPoliciesDataSource,

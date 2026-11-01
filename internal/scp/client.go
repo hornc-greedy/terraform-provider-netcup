@@ -49,6 +49,7 @@ type Client struct {
 	accessToken string
 	expiry      time.Time
 	userID      int
+	serverLocks map[int]chan struct{}
 }
 
 // New returns a Client of DefaultServer for the given offline refresh token.

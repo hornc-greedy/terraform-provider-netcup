@@ -139,6 +139,7 @@ type scpState struct {
 	tasks             map[string]*taskInfo
 	failedTask        *taskInfo
 	gpuAvailable      bool
+	interfaces        map[int][]*serverInterface
 	guestAgentMissing bool
 	taskServers       map[string]int
 }
@@ -156,6 +157,7 @@ func newSCPState() *scpState {
 				},
 			},
 		},
+		interfaces:  map[int][]*serverInterface{defaultServerID: {{mac: defaultMAC, driver: "VIRTIO"}}},
 		firewalls:   map[string]*serverFirewall{defaultMAC: {copied: []int{copiedPolicyID}, active: true}},
 		snapshots:   map[int]map[string]*snapshot{defaultServerID: {}},
 		policies:    map[int]*firewallPolicy{copiedPolicyID: {ID: copiedPolicyID, Name: "copied", Rules: []firewallRule{}}},
@@ -279,12 +281,16 @@ func (s *Server) scpHandlers() map[string]handler {
 		"DELETE /api/v1/rdns/ipv4/{ip}": s.deleteRDNS,
 		"DELETE /api/v1/rdns/ipv6/{ip}": s.deleteRDNS,
 
-		"GET /api/v1/servers":   s.listServers,
-		"GET " + pathServer:     s.getServer,
-		"PATCH " + pathServer:   s.patchServer,
-		"GET " + pathInterfaces: s.listInterfaces,
-		"GET " + pathFirewall:   s.getFirewall,
-		"PUT " + pathFirewall:   s.putFirewall,
+		"GET /api/v1/servers":                 s.listServers,
+		"GET " + pathServer:                   s.getServer,
+		"PATCH " + pathServer:                 s.patchServer,
+		"GET " + pathInterfaces:               s.listInterfaces,
+		"POST " + pathInterfaces:              s.createInterface,
+		"GET " + pathInterfaces + "/{mac}":    s.getInterface,
+		"PUT " + pathInterfaces + "/{mac}":    s.putInterface,
+		"DELETE " + pathInterfaces + "/{mac}": s.deleteInterface,
+		"GET " + pathFirewall:                 s.getFirewall,
+		"PUT " + pathFirewall:                 s.putFirewall,
 
 		"POST " + pathSnapshots:  s.createSnapshot,
 		"GET " + pathSnapshot:    s.getSnapshot,
@@ -379,11 +385,28 @@ func (s *Server) getServer(c *call) (int, any) {
 	if v == nil {
 		return notFound()
 	}
+	type liveInterface struct {
+		Mac           string `json:"mac"`
+		VlanInterface bool   `json:"vlanInterface"`
+		VlanID        *int   `json:"vlanId,omitempty"`
+	}
+	type live struct {
+		liveInfo
+		Interfaces []liveInterface `json:"interfaces"`
+	}
 	type detail struct {
 		*server
-		ServerLiveInfo liveInfo `json:"serverLiveInfo"`
+		ServerLiveInfo live `json:"serverLiveInfo"`
 	}
-	return http.StatusOK, detail{server: v, ServerLiveInfo: v.live}
+	out := detail{server: v, ServerLiveInfo: live{liveInfo: v.live, Interfaces: []liveInterface{}}}
+	for _, i := range s.scp.interfaces[v.ID] {
+		entry := liveInterface{Mac: i.mac, VlanInterface: i.vlanID != 0}
+		if i.vlanID != 0 {
+			entry.VlanID = &i.vlanID
+		}
+		out.ServerLiveInfo.Interfaces = append(out.ServerLiveInfo.Interfaces, entry)
+	}
+	return http.StatusOK, out
 }
 
 // serverPatchSchemas maps each attribute of PATCH server to its schema.
@@ -480,10 +503,17 @@ func applyServerPatch(v *server, key string, raw json.RawMessage) error {
 	return fmt.Errorf("mock does not implement attribute")
 }
 
-func (s *Server) listInterfaces(c *call) (int, any) {
-	v := s.scpServer(c)
-	if v == nil {
-		return notFound()
+type serverInterface struct {
+	mac, driver string
+	vlanID      int
+}
+
+func (s *Server) interfaceJSON(i *serverInterface) map[string]any {
+	// The specification types the driver as a free string here. Lower case makes
+	// the tests cover the provider against either form.
+	out := map[string]any{"mac": i.mac, "driver": strings.ToLower(i.driver), "speedInMBits": 2500, "ipv4Addresses": []any{}, "ipv6Addresses": []any{}}
+	if i.mac != defaultMAC {
+		return out
 	}
 	// netcup returns {} for an IPv6 address without PTR.
 	ipv6RDNS := map[string]string{}
@@ -494,17 +524,150 @@ func (s *Server) listInterfaces(c *call) (int, any) {
 	if name, ok := s.scp.rdns[defaultIPv4]; ok {
 		ipv4RDNS = name
 	}
-	return http.StatusOK, []map[string]any{{
-		"mac": defaultMAC, "driver": "virtio", "speedInMBits": 2500,
-		"ipv4Addresses": []map[string]any{{
-			"id": 1, "interfaceMac": defaultMAC, "ip": defaultIPv4, "cidr": defaultIPv4 + "/22", "gateway": "203.0.113.1",
-			"rdns": ipv4RDNS, "editable": false,
-		}},
-		"ipv6Addresses": []map[string]any{{
-			"id": 2, "interfaceMac": defaultMAC, "networkPrefix": "2001:db8::", "cidr": "2001:db8::/64", "gateway": "fe80::1",
-			"linkLocal": false, "rdns": ipv6RDNS, "editable": false,
-		}},
+	out["ipv4Addresses"] = []map[string]any{{
+		"id": 1, "interfaceMac": defaultMAC, "type": "IP", "ip": defaultIPv4, "cidr": defaultIPv4 + "/22", "gateway": "203.0.113.1",
+		"rdns": ipv4RDNS, "destinationIp": nil, "editable": false,
+	}, {
+		"id": 3, "interfaceMac": defaultMAC, "type": "ROUTED_IP", "ip": "203.0.113.11", "cidr": "203.0.113.11/32", "gateway": nil,
+		"rdns": nil, "destinationIp": defaultIPv4, "editable": true,
 	}}
+	out["ipv6Addresses"] = []map[string]any{{
+		"id": 2, "interfaceMac": defaultMAC, "type": "IP", "networkPrefix": "2001:db8::", "cidr": "2001:db8::/64", "gateway": "fe80::1",
+		"linkLocal": false, "rdns": ipv6RDNS, "destinationIp": nil, "editable": false,
+	}}
+	return out
+}
+
+func (s *Server) listInterfaces(c *call) (int, any) {
+	v := s.scpServer(c)
+	if v == nil {
+		return notFound()
+	}
+	out := []map[string]any{}
+	for _, i := range s.scp.interfaces[v.ID] {
+		out = append(out, s.interfaceJSON(i))
+	}
+	return http.StatusOK, out
+}
+
+func (s *Server) findInterface(c *call) *serverInterface {
+	v := s.scpServer(c)
+	if v == nil {
+		return nil
+	}
+	for _, i := range s.scp.interfaces[v.ID] {
+		if i.mac == c.params["mac"] {
+			return i
+		}
+	}
+	return nil
+}
+
+func (s *Server) getInterface(c *call) (int, any) {
+	i := s.findInterface(c)
+	if i == nil {
+		return notFound()
+	}
+	return http.StatusOK, s.interfaceJSON(i)
+}
+
+// maxInterfaces is the limit the specification states.
+const maxInterfaces = 10
+
+func (s *Server) createInterface(c *call) (int, any) {
+	v := s.scpServer(c)
+	if v == nil {
+		s.checkServer(c)
+		return validationError("server not found")
+	}
+	if len(s.scp.interfaces[v.ID]) >= maxInterfaces {
+		return http.StatusBadRequest, map[string]any{"code": "error.mock", "message": "Maximum amount of interfaces per server is 10", "errors": []any{}}
+	}
+	var body struct {
+		VlanID        int    `json:"vlanId"`
+		NetworkDriver string `json:"networkDriver"`
+	}
+	if err := c.decode(&body); err != nil {
+		return validationError(err.Error())
+	}
+	mac := fmt.Sprintf("aa:bb:cc:dd:ff:%02x", s.scp.newID()%256)
+	s.scp.interfaces[v.ID] = append(s.scp.interfaces[v.ID], &serverInterface{mac: mac, driver: body.NetworkDriver, vlanID: body.VlanID})
+	// Assumption, a new interface has an empty firewall.
+	s.scp.firewalls[mac] = &serverFirewall{}
+	return http.StatusAccepted, s.scp.startTask("ServerCreateNic", v.ID)
+}
+
+func (s *Server) putInterface(c *call) (int, any) {
+	i := s.findInterface(c)
+	if i == nil {
+		return notFound()
+	}
+	var body struct {
+		Driver string `json:"driver"`
+	}
+	if err := c.decode(&body); err != nil {
+		s.t.Errorf("PUT interface: %v", err)
+		return notFound()
+	}
+	if body.Driver == i.driver {
+		return http.StatusNoContent, nil
+	}
+	i.driver = body.Driver
+	return http.StatusAccepted, s.scp.startTask("ServerUpdateNic", s.scpServer(c).ID)
+}
+
+func (s *Server) deleteInterface(c *call) (int, any) {
+	i := s.findInterface(c)
+	if i == nil {
+		// Assumption, the specification lists only 422 as an error here.
+		return validationError("interface not found")
+	}
+	id := s.scpServer(c).ID
+	s.scp.interfaces[id] = slices.DeleteFunc(s.scp.interfaces[id], func(other *serverInterface) bool { return other == i })
+	delete(s.scp.firewalls, i.mac)
+	return http.StatusAccepted, s.scp.startTask("ServerDeleteNic", id)
+}
+
+func validationError(message string) (int, any) {
+	return http.StatusUnprocessableEntity, map[string]any{"code": "error.mock", "message": message, "errors": []any{}}
+}
+
+// InterfaceDriver returns the driver of an interface, or "" if there is none.
+func (s *Server) InterfaceDriver(mac string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, i := range s.scp.interfaces[defaultServerID] {
+		if i.mac == mac {
+			return i.driver
+		}
+	}
+	return ""
+}
+
+// InterfaceVlan returns the VLAN of an interface.
+func (s *Server) InterfaceVlan(mac string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, i := range s.scp.interfaces[defaultServerID] {
+		if i.mac == mac {
+			return i.vlanID
+		}
+	}
+	return 0
+}
+
+// RemoveInterface makes an interface disappear outside of Terraform.
+func (s *Server) RemoveInterface(mac string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.interfaces[defaultServerID] = slices.DeleteFunc(s.scp.interfaces[defaultServerID], func(i *serverInterface) bool { return i.mac == mac })
+}
+
+// InterfaceCount returns the number of interfaces of the default server.
+func (s *Server) InterfaceCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.scp.interfaces[defaultServerID])
 }
 
 func (s *Server) policiesByID(ids []int) []firewallPolicy {

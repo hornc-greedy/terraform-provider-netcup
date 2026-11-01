@@ -297,8 +297,6 @@ func (s *Server) serveSpec(w http.ResponseWriter, r *http.Request, body []byte, 
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-	}
-	if status != http.StatusNoContent {
 		w.Header().Set("Content-Type", "application/json")
 	}
 	out := &openapi3filter.ResponseValidationInput{

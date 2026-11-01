@@ -6,7 +6,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -409,5 +411,108 @@ func TestDryRunRejectsOtherOKBody(t *testing.T) {
 	})
 	if _, err := c.DryRunSnapshot(context.Background(), 5, "vda", false); err == nil {
 		t.Fatal("a body that is no list must fail")
+	}
+}
+
+func TestMockInterfaceLifecycle(t *testing.T) {
+	c, m := mockClient(t)
+	ctx := context.Background()
+	const id = mockapi.DefaultServerID
+	mac, err := c.CreateInterface(ctx, id, 100, "VIRTIO")
+	if err != nil || mac == "" {
+		t.Fatalf("CreateInterface: %q %v", mac, err)
+	}
+	if err := c.UpdateInterface(ctx, id, mac, "E1000"); err != nil {
+		t.Fatalf("UpdateInterface: %v", err)
+	}
+	if got := m.InterfaceDriver(mac); got != "E1000" {
+		t.Fatalf("driver = %q", got)
+	}
+	if got := m.InterfaceVlan(mac); got != 100 {
+		t.Fatalf("vlan = %d", got)
+	}
+	if err := c.UpdateInterface(ctx, id, mac, "E1000"); err != nil {
+		t.Fatalf("UpdateInterface without change: %v", err)
+	}
+	got, err := c.GetInterface(ctx, id, mac)
+	if err != nil || got.Mac != mac || got.Driver != "e1000" {
+		t.Fatalf("GetInterface: %v %+v", err, got)
+	}
+	server, err := c.GetServer(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vlan, known := server.VlanOf(mac); !known || *vlan != 100 {
+		t.Fatalf("VlanOf: %v %v", vlan, known)
+	}
+	if vlan, known := server.VlanOf(mockapi.DefaultMAC); !known || vlan != nil {
+		t.Fatalf("VlanOf of the public interface: %v %v", vlan, known)
+	}
+	if err := c.DeleteInterface(ctx, id, mac); err != nil {
+		t.Fatalf("DeleteInterface: %v", err)
+	}
+	if _, err := c.GetInterface(ctx, id, mac); !IsNotFound(err) {
+		t.Fatalf("after delete: %v", err)
+	}
+}
+
+func TestMockInterfacesCreatedInParallelGetTheirOwnMAC(t *testing.T) {
+	c, _ := mockClient(t)
+	ctx := context.Background()
+	macs := make([]string, 5)
+	var wg sync.WaitGroup
+	for i := range macs {
+		wg.Go(func() {
+			mac, err := c.CreateInterface(ctx, mockapi.DefaultServerID, 100, "VIRTIO")
+			if err != nil {
+				t.Errorf("CreateInterface: %v", err)
+			}
+			macs[i] = mac
+		})
+	}
+	wg.Wait()
+	slices.Sort(macs)
+	if got := slices.Compact(macs); len(got) != 5 {
+		t.Fatalf("macs = %v", macs)
+	}
+}
+
+func TestMockInterfaceLimitIsReported(t *testing.T) {
+	c, _ := mockClient(t)
+	ctx := context.Background()
+	for range 9 {
+		if _, err := c.CreateInterface(ctx, mockapi.DefaultServerID, 100, "VIRTIO"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := c.CreateInterface(ctx, mockapi.DefaultServerID, 100, "VIRTIO")
+	if err == nil || !strings.Contains(err.Error(), "Maximum amount") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestMockInterfaceTaskFailureStillReturnsMAC(t *testing.T) {
+	c, m := mockClient(t)
+	m.FailTasks("disk full")
+	mac, err := c.CreateInterface(context.Background(), mockapi.DefaultServerID, 100, "VIRTIO")
+	if err == nil || !strings.Contains(err.Error(), "disk full") {
+		t.Fatalf("err = %v", err)
+	}
+	if mac == "" {
+		t.Fatal("MAC of the created interface is missing")
+	}
+}
+
+func TestLockServerEndsWithContext(t *testing.T) {
+	c, _ := mockClient(t)
+	unlock, err := c.lockServer(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := c.lockServer(ctx, 1); err == nil {
+		t.Fatal("waiting for the lock must end with the context")
 	}
 }

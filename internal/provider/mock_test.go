@@ -734,6 +734,148 @@ resource "echo" "test" {}
 	})
 }
 
+func testMockServerInterface(driver string) string {
+	return fmt.Sprintf(`
+resource "netcup_server_interface" "test" {
+  server_id = %d
+  vlan_id   = 100
+  driver    = %q
+}
+
+data "netcup_server_interface" "test" {
+  server_id = netcup_server_interface.test.server_id
+  mac       = netcup_server_interface.test.mac
+}
+`, mockapi.DefaultServerID, driver)
+}
+
+func TestMockServerInterface(t *testing.T) {
+	m := mockapi.New(t)
+	const name = "netcup_server_interface.test"
+	mac := func(s *terraform.State) string {
+		return s.RootModule().Resources[name].Primary.Attributes["mac"]
+	}
+	testCase := testMockCase(
+		resource.TestStep{
+			Config: testMockConfig(m, testMockServerInterface("VIRTIO")),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttrSet(name, "mac"),
+				resource.TestCheckResourceAttr(name, "speed_in_mbits", "2500"),
+				resource.TestCheckResourceAttrPair(name, "mac", "data.netcup_server_interface.test", "mac"),
+				resource.TestCheckResourceAttr(name, "driver", "VIRTIO"),
+				resource.TestCheckResourceAttr("data.netcup_server_interface.test", "ipv4_addresses.#", "0"),
+				func(s *terraform.State) error {
+					if got := m.InterfaceVlan(mac(s)); got != 100 {
+						return fmt.Errorf("vlan = %d", got)
+					}
+					return nil
+				},
+			),
+		},
+		resource.TestStep{
+			Config: testMockConfig(m, testMockServerInterface("E1000")),
+			Check: func(s *terraform.State) error {
+				if got := m.InterfaceDriver(mac(s)); got != "E1000" {
+					return fmt.Errorf("driver = %q", got)
+				}
+				return nil
+			},
+		},
+		resource.TestStep{
+			ResourceName: name, ImportState: true, ImportStateVerify: true,
+			ImportStateIdFunc: func(s *terraform.State) (string, error) {
+				return fmt.Sprintf("%d/%s", mockapi.DefaultServerID, mac(s)), nil
+			},
+			ImportStateVerifyIgnore: []string{"timeouts"},
+		},
+	)
+	testCase.CheckDestroy = func(*terraform.State) error {
+		if got := m.InterfaceCount(); got != 1 {
+			return fmt.Errorf("interfaces after destroy: %d", got)
+		}
+		return nil
+	}
+	resource.Test(t, testCase)
+}
+
+func TestMockServerInterfaceRemovedOutsideOfTerraform(t *testing.T) {
+	m := mockapi.New(t)
+	var removed string
+	config := testMockConfig(m, `
+resource "netcup_server_interface" "test" {
+  server_id = `+strconv.Itoa(mockapi.DefaultServerID)+`
+  vlan_id   = 100
+  driver    = "VIRTIO"
+}
+`)
+	resource.Test(t, testMockCase(
+		resource.TestStep{
+			Config: config,
+			Check: func(s *terraform.State) error {
+				removed = s.RootModule().Resources["netcup_server_interface.test"].Primary.Attributes["mac"]
+				return nil
+			},
+		},
+		resource.TestStep{
+			PreConfig:          func() { m.RemoveInterface(removed) },
+			Config:             config,
+			PlanOnly:           true,
+			ExpectNonEmptyPlan: true,
+		},
+		// Recreates the interface, so that the destroy at the end finds it.
+		resource.TestStep{Config: config},
+	))
+}
+
+func TestMockServerInterfaceImportRejectsPublicInterface(t *testing.T) {
+	m := mockapi.New(t)
+	config := testMockConfig(m, `
+resource "netcup_server_interface" "test" {
+  server_id = `+strconv.Itoa(mockapi.DefaultServerID)+`
+  vlan_id   = 100
+  driver    = "VIRTIO"
+}
+`)
+	resource.Test(t, testMockCase(
+		resource.TestStep{Config: config},
+		resource.TestStep{
+			ResourceName: "netcup_server_interface.test", ImportState: true,
+			ImportStateId: fmt.Sprintf("%d/%s", mockapi.DefaultServerID, mockapi.DefaultMAC),
+			ExpectError:   regexp.MustCompile("Not a VLAN interface"),
+		},
+	))
+}
+
+func TestMockServerInterfaceNullValues(t *testing.T) {
+	m := mockapi.New(t)
+	const singular = "data.netcup_server_interface.default"
+	const plural = "data.netcup_server_interfaces.all"
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockConfig(m, fmt.Sprintf(`
+data "netcup_server_interface" "default" {
+  server_id = %[1]d
+  mac       = %[2]q
+}
+
+data "netcup_server_interfaces" "all" {
+  server_id = %[1]d
+}
+`, mockapi.DefaultServerID, mockapi.DefaultMAC)),
+		Check: resource.ComposeAggregateTestCheckFunc(
+			resource.TestCheckResourceAttr(singular, "ipv4_addresses.0.type", "IP"),
+			resource.TestCheckResourceAttr(singular, "ipv4_addresses.0.interface_mac", mockapi.DefaultMAC),
+			resource.TestCheckNoResourceAttr(singular, "ipv4_addresses.0.destination_ip"),
+			resource.TestCheckNoResourceAttr(singular, "ipv4_addresses.1.gateway"),
+			resource.TestCheckNoResourceAttr(singular, "ipv4_addresses.1.rdns"),
+			resource.TestCheckResourceAttr(singular, "ipv4_addresses.1.destination_ip", mockapi.DefaultIPv4),
+			resource.TestCheckResourceAttr(singular, "ipv6_addresses.0.editable", "false"),
+			resource.TestCheckResourceAttr(plural, "interfaces.0.ipv4_addresses.1.type", "ROUTED_IP"),
+			resource.TestCheckResourceAttr(plural, "interfaces.0.ipv4_addresses.1.gateway", ""),
+			resource.TestCheckResourceAttr(plural, "interfaces.0.ipv4_addresses.1.rdns", ""),
+		),
+	}))
+}
+
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {
 	for attribute, object := range map[string]string{
 		"scp_refresh_token": `data "netcup_servers" "test" {}`,

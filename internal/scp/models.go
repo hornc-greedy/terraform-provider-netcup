@@ -22,28 +22,38 @@ type Server struct {
 // ServerLiveInfo is the subset of the detail endpoint's serverLiveInfo the
 // provider reads. netcup returns null when the node cannot report it.
 type ServerLiveInfo struct {
-	State          string   `json:"state"`
-	Autostart      bool     `json:"autostart"`
-	UEFI           bool     `json:"uefi"`
-	Bootorder      []string `json:"bootorder"`
-	OSOptimization string   `json:"osOptimization"`
-	Sockets        int      `json:"sockets"`
-	CoresPerSocket int      `json:"coresPerSocket"`
-	KeyboardLayout string   `json:"keyboardLayout"`
-	BackupTime     string   `json:"backupTime"`
+	State          string          `json:"state"`
+	Autostart      bool            `json:"autostart"`
+	UEFI           bool            `json:"uefi"`
+	Bootorder      []string        `json:"bootorder"`
+	OSOptimization string          `json:"osOptimization"`
+	Sockets        int             `json:"sockets"`
+	CoresPerSocket int             `json:"coresPerSocket"`
+	KeyboardLayout string          `json:"keyboardLayout"`
+	BackupTime     string          `json:"backupTime"`
+	Interfaces     []LiveInterface `json:"interfaces"`
+}
+
+// LiveInterface is the subset of an entry of serverLiveInfo.interfaces the
+// provider reads.
+type LiveInterface struct {
+	Mac           string `json:"mac"`
+	VlanInterface bool   `json:"vlanInterface"`
+	VlanID        *int   `json:"vlanId"`
 }
 
 // IPv4Address mirrors an entry of an interface's ipv4Addresses. Its rDNS is a
 // single hostname string, unlike IPv6 which has a per-address map.
 type IPv4Address struct {
-	ID           int    `json:"id"`
-	IP           string `json:"ip"`
-	CIDR         string `json:"cidr"`
-	Gateway      string `json:"gateway"`
-	RDNS         string `json:"rdns"`
-	Type         string `json:"type"`
-	Editable     bool   `json:"editable"`
-	InterfaceMac string `json:"interfaceMac"`
+	ID            int    `json:"id"`
+	IP            string `json:"ip"`
+	CIDR          string `json:"cidr"`
+	Gateway       string `json:"gateway"`
+	RDNS          string `json:"rdns"`
+	DestinationIP string `json:"destinationIp"`
+	Type          string `json:"type"`
+	Editable      bool   `json:"editable"`
+	InterfaceMac  string `json:"interfaceMac"`
 }
 
 // IPv6Address mirrors an entry of an interface's ipv6Addresses. Its rDNS is a
@@ -56,6 +66,7 @@ type IPv6Address struct {
 	Gateway       string            `json:"gateway"`
 	LinkLocal     bool              `json:"linkLocal"`
 	RDNS          map[string]string `json:"rdns"`
+	DestinationIP string            `json:"destinationIp"`
 	Type          string            `json:"type"`
 	Editable      bool              `json:"editable"`
 	InterfaceMac  string            `json:"interfaceMac"`

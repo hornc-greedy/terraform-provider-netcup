@@ -54,9 +54,14 @@ Read-Only:
 Read-Only:
 
 - `cidr` (String) CIDR.
+- `destination_ip` (String) Destination IP.
+- `editable` (Boolean) The `editable` value of the SCP REST API.
 - `gateway` (String) Gateway.
+- `id` (Number) Id of the address.
+- `interface_mac` (String) MAC address of the interface.
 - `ip` (String) IPv4 address.
 - `rdns` (String) Reverse DNS hostname.
+- `type` (String) `IP` or `ROUTED_IP`.
 
 
 <a id="nestedatt--interfaces--ipv6_addresses"></a>
@@ -65,7 +70,12 @@ Read-Only:
 Read-Only:
 
 - `cidr` (String) CIDR.
+- `destination_ip` (String) Destination IP.
+- `editable` (Boolean) The `editable` value of the SCP REST API.
 - `gateway` (String) Gateway.
+- `id` (Number) Id of the address.
+- `interface_mac` (String) MAC address of the interface.
 - `link_local` (Boolean) Whether this is a link-local address.
 - `network_prefix` (String) Network prefix.
 - `rdns` (Map of String) Reverse DNS entries, keyed by full IPv6 address.
+- `type` (String) `IP` or `ROUTED_IP`.
