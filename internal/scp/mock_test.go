@@ -248,7 +248,7 @@ func TestMockServerInfo(t *testing.T) {
 	ctx := context.Background()
 	const id = mockapi.DefaultServerID
 	disks, err := c.ListDisks(ctx, id)
-	if err != nil || len(disks) != 1 {
+	if err != nil || len(disks) != 2 {
 		t.Fatalf("ListDisks: %v %+v", err, disks)
 	}
 	if disk, err := c.GetDisk(ctx, id, disks[0].Name); err != nil || disk.StorageDriver != "VIRTIO" {

@@ -139,6 +139,8 @@ type scpState struct {
 	tasks             map[string]*taskInfo
 	failedTask        *taskInfo
 	gpuAvailable      bool
+	secondDiskDriver  string
+	diskDrivers       map[int]string
 	attachedIso       map[int]string
 	rescueActive      map[int]bool
 	isoBody           map[int]string
@@ -166,6 +168,7 @@ func newSCPState() *scpState {
 		attachedIso:  map[int]string{},
 		rescueActive: map[int]bool{},
 		isoBody:      map[int]string{},
+		diskDrivers:  map[int]string{},
 		firewalls:    map[string]*serverFirewall{defaultMAC: {copied: []int{copiedPolicyID}, active: true}},
 		snapshots:    map[int]map[string]*snapshot{defaultServerID: {}},
 		policies:     map[int]*firewallPolicy{copiedPolicyID: {ID: copiedPolicyID, Name: "copied", Rules: []firewallRule{}}},
@@ -322,6 +325,7 @@ func (s *Server) scpHandlers() map[string]handler {
 		"DELETE " + pathSnapshot: s.deleteSnapshot,
 
 		"GET " + pathServer + "/disks":                   s.listDisks,
+		"PATCH " + pathServer + "/disks":                 s.patchDisks,
 		"GET " + pathServer + "/disks/{diskName}":        s.getDisk,
 		"GET " + pathServer + "/disks/supported-drivers": s.listDrivers,
 		"GET " + pathServer + "/gpu-driver":              s.getGPUDriver,
@@ -980,19 +984,66 @@ func (s *Server) checkServer(c *call) {
 
 var mockUser = map[string]any{"id": UserID, "username": "mock", "firstname": "Mo", "lastname": "Ck", "email": "mock@example.com", "company": nil}
 
-var mockDisk = map[string]any{"name": "vda", "allocationInMiB": 1024, "capacityInMiB": 8192, "storageDriver": "VIRTIO"}
+func (s *Server) diskJSON(c *call, name string) map[string]any {
+	driver := "VIRTIO"
+	if v := s.scpServer(c); v != nil && s.scp.diskDrivers[v.ID] != "" {
+		driver = s.scp.diskDrivers[v.ID]
+	}
+	if name == "vdb" && s.scp.secondDiskDriver != "" {
+		driver = s.scp.secondDiskDriver
+	}
+	return map[string]any{"name": name, "allocationInMiB": 1024, "capacityInMiB": 8192, "storageDriver": driver}
+}
+
+// SetSecondDiskDriver gives the second disk another driver than the first.
+func (s *Server) SetSecondDiskDriver(driver string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.secondDiskDriver = driver
+}
+
+// DiskDriver returns the storage driver of the default server.
+func (s *Server) DiskDriver() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.scp.diskDrivers[defaultServerID]
+}
+
+// SetDiskDriver changes the storage driver outside of Terraform.
+func (s *Server) SetDiskDriver(driver string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.diskDrivers[defaultServerID] = driver
+}
+
+func (s *Server) patchDisks(c *call) (int, any) {
+	v := s.scpServer(c)
+	if v == nil {
+		s.checkServer(c)
+		return http.StatusAccepted, s.scp.startTask("ServerPatchDisks", 0)
+	}
+	var body struct {
+		Driver string `json:"driver"`
+	}
+	if err := c.decode(&body); err != nil {
+		s.t.Errorf("PATCH disks: %v", err)
+	}
+	s.scp.diskDrivers[v.ID] = body.Driver
+	s.scp.secondDiskDriver = ""
+	return http.StatusAccepted, s.scp.startTask("ServerPatchDisks", v.ID)
+}
 
 func (s *Server) listDisks(c *call) (int, any) {
 	s.checkServer(c)
-	return http.StatusOK, []map[string]any{mockDisk}
+	return http.StatusOK, []map[string]any{s.diskJSON(c, "vda"), s.diskJSON(c, "vdb")}
 }
 
 func (s *Server) getDisk(c *call) (int, any) {
 	s.checkServer(c)
-	if c.params["diskName"] != "vda" {
+	if c.params["diskName"] != "vda" && c.params["diskName"] != "vdb" {
 		s.t.Errorf("request for unknown disk %s", c.params["diskName"])
 	}
-	return http.StatusOK, mockDisk
+	return http.StatusOK, s.diskJSON(c, c.params["diskName"])
 }
 
 func (s *Server) listDrivers(c *call) (int, any) {

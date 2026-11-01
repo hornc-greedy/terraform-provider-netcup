@@ -63,3 +63,13 @@ func (c *Client) PatchServerState(ctx context.Context, id int, state string) err
 	}
 	return c.waitForTask(ctx, task.UUID)
 }
+
+// PatchDiskDriver changes the storage driver of the disks of a server and waits
+// for the task.
+func (c *Client) PatchDiskDriver(ctx context.Context, id int, driver string) error {
+	var task TaskInfo
+	if err := c.send(ctx, "PATCH", "/servers/"+strconv.Itoa(id)+"/disks", "application/merge-patch+json", map[string]string{"driver": driver}, &task); err != nil {
+		return err
+	}
+	return c.waitForTask(ctx, task.UUID)
+}

@@ -1290,6 +1290,65 @@ resource "echo" "test" {}
 	})
 }
 
+func testMockDiskDriver(driver string) string {
+	return fmt.Sprintf(`
+resource "netcup_server_disk_driver" "test" {
+  server_id = %d
+  driver    = %q
+}
+`, mockapi.DefaultServerID, driver)
+}
+
+func TestMockServerDiskDriver(t *testing.T) {
+	m := mockapi.New(t)
+	const name = "netcup_server_disk_driver.test"
+	config := testMockConfig(m, testMockDiskDriver("VIRTIO_SCSI"))
+	resource.Test(t, testMockCase(
+		resource.TestStep{
+			Config: config,
+			Check: func(*terraform.State) error {
+				if got := m.DiskDriver(); got != "VIRTIO_SCSI" {
+					return fmt.Errorf("driver = %q", got)
+				}
+				return nil
+			},
+		},
+		resource.TestStep{ResourceName: name, ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"timeouts"}},
+		resource.TestStep{
+			PreConfig: func() { m.SetDiskDriver("SATA") },
+			Config:    config, PlanOnly: true, ExpectNonEmptyPlan: true,
+		},
+		resource.TestStep{
+			Config: testMockConfig(m, testMockDiskDriver("IDE")),
+			Check: func(*terraform.State) error {
+				if got := m.DiskDriver(); got != "IDE" {
+					return fmt.Errorf("driver = %q", got)
+				}
+				return nil
+			},
+		},
+		// Only the second disk differs, the plan still shows it.
+		resource.TestStep{
+			PreConfig: func() { m.SetSecondDiskDriver("SATA") },
+			Config:    testMockConfig(m, testMockDiskDriver("IDE")), PlanOnly: true, ExpectNonEmptyPlan: true,
+		},
+		resource.TestStep{Config: testMockConfig(m, testMockDiskDriver("IDE"))},
+	))
+}
+
+func TestMockServerDiskDriverSendsNoChangeForTheSameDriver(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockConfig(m, testMockDiskDriver("VIRTIO")),
+		Check: func(*terraform.State) error {
+			if got := m.DiskDriver(); got != "" {
+				return fmt.Errorf("PATCH sent, driver = %q", got)
+			}
+			return nil
+		},
+	}))
+}
+
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {
 	for attribute, object := range map[string]string{
 		"scp_refresh_token": `data "netcup_servers" "test" {}`,

@@ -164,6 +164,7 @@ func (p *netcupProvider) Resources(_ context.Context) []func() resource.Resource
 		NewUserVlanResource,
 		NewServerIsoResource,
 		NewServerRescueSystemResource,
+		NewServerDiskDriverResource,
 		NewCloudDNSRecordResource,
 		NewCloudDNSAcmeChallengeResource,
 	}

@@ -26,7 +26,7 @@ var Endpoints = []Endpoint{
 	{"GET", "/api/v1/servers/{serverId}", "netcup_server, netcup_server_settings"},
 	{"PATCH", "/api/v1/servers/{serverId}", "netcup_server_settings, netcup_server_rescue_system"},
 	{"GET", "/api/v1/servers/{serverId}/disks", "netcup_server_disks"},
-	{"PATCH", "/api/v1/servers/{serverId}/disks", ""},
+	{"PATCH", "/api/v1/servers/{serverId}/disks", "netcup_server_disk_driver"},
 	{"GET", "/api/v1/servers/{serverId}/disks/supported-drivers", "netcup_server_disk_supported_drivers"},
 	{"GET", "/api/v1/servers/{serverId}/disks/{diskName}", "netcup_server_disk"},
 	{"POST", "/api/v1/servers/{serverId}/disks/{diskName}:format", ""},
