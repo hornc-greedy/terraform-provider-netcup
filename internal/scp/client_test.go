@@ -394,12 +394,12 @@ func TestContentTypeOfBodylessRequests(t *testing.T) {
 	c := New("refresh-token")
 	c.BaseURL = srv.URL
 	c.TokenURL = srv.URL + "/token"
-	for _, method := range []string{http.MethodPost, http.MethodDelete, http.MethodGet} {
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodGet} {
 		if err := c.do(context.Background(), method, "/x", nil, nil); err != nil {
 			t.Fatalf("%s: %v", method, err)
 		}
 	}
-	want := []string{"POST application/json", "DELETE ", "GET "}
+	want := []string{"POST application/json", "PUT application/json", "DELETE ", "GET "}
 	if !slices.Equal(got, want) {
 		t.Fatalf("got %q, want %q", got, want)
 	}

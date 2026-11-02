@@ -267,9 +267,9 @@ func (s *Server) serveSpec(w http.ResponseWriter, r *http.Request, body []byte, 
 	}
 	key := r.Method + " " + route.Path
 
-	// netcup rejects a POST without a body when the Content-Type is missing. The
-	// specification does not mention it.
-	if router == s.router && len(body) == 0 && r.Method == http.MethodPost && r.Header.Get("Content-Type") == "" {
+	// netcup rejects a POST or PUT without a body when the Content-Type is
+	// missing. The specification does not mention it.
+	if router == s.router && len(body) == 0 && (r.Method == http.MethodPost || r.Method == http.MethodPut) && r.Header.Get("Content-Type") == "" {
 		writeJSON(w, http.StatusBadRequest, responseError{Code: "error.content.type.invalid", Message: "The HTTP header Content-Type must be 'type/subtype'"})
 		return
 	}
@@ -308,8 +308,12 @@ func (s *Server) serveSpec(w http.ResponseWriter, r *http.Request, body []byte, 
 	}
 	out := &openapi3filter.ResponseValidationInput{
 		RequestValidationInput: input, Status: status, Header: w.Header(),
-		Body:    io.NopCloser(bytes.NewReader(payload)),
-		Options: &openapi3filter.Options{IncludeResponseStatus: !undocumentedStatus(key, status)},
+		Body: io.NopCloser(bytes.NewReader(payload)),
+		// A 204 has no content (RFC 9110), even where the spec lists some.
+		Options: &openapi3filter.Options{
+			IncludeResponseStatus: !undocumentedStatus(key, status),
+			ExcludeResponseBody:   status == http.StatusNoContent,
+		},
 	}
 	if err := openapi3filter.ValidateResponse(context.Background(), out); err != nil {
 		s.t.Errorf("response of %s violates the specification: %v", key, err)

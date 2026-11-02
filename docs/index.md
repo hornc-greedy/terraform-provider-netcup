@@ -47,4 +47,4 @@ provider "netcup" {
 - `clouddns_base_url` (String) Host of the netcup API, by default `https://api.netcup.com`. May also be set via `NETCUP_CLOUDDNS_BASE_URL`.
 - `customer_number` (String) netcup customer number (CCP API). May also be set via `NETCUP_CUSTOMER_NUMBER`.
 - `scp_base_url` (String) SCP host, by default `https://www.servercontrolpanel.de`. May also be set via `NETCUP_SCP_BASE_URL`.
-- `scp_refresh_token` (String, Sensitive) SCP REST API offline refresh token (obtained once via the OIDC device flow). Required only for SCP resources/data sources (reverse DNS, servers and VLANs). May also be set via `NETCUP_SCP_REFRESH_TOKEN`.
+- `scp_refresh_token` (String, Sensitive) SCP REST API offline refresh token (obtained once via the OIDC device flow). Required only for SCP resources/data sources (reverse DNS, servers, VLANs and actions). May also be set via `NETCUP_SCP_REFRESH_TOKEN`.

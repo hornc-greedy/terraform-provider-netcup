@@ -36,6 +36,7 @@ const (
 	failoverV4ID      = 10
 	failoverV6ID      = 20
 	defaultFailoverV4 = "203.0.113.200"
+	exportedSizeInKiB = 1048576
 )
 
 type responseError struct {
@@ -137,7 +138,7 @@ type scpState struct {
 	failoverV4        map[int]*failoverIP
 	failoverV6        map[int]*failoverIP
 	tasks             map[string]*taskInfo
-	failedTask        *taskInfo
+	taskOverride      *taskInfo
 	gpuAvailable      bool
 	secondDiskDriver  string
 	diskDrivers       map[int]string
@@ -199,14 +200,14 @@ func (s *scpState) startTask(name string, serverID int) *taskInfo {
 func (s *Server) ClearFailedTasks() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.scp.failedTask = nil
+	s.scp.taskOverride = nil
 }
 
 // FailTasks makes every task end in state ERROR with the given error.
 func (s *Server) FailTasks(message string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.scp.failedTask = &taskInfo{State: "ERROR", ResponseError: &responseError{Code: "error.mock", Message: message}}
+	s.scp.taskOverride = &taskInfo{State: "ERROR", ResponseError: &responseError{Code: "error.mock", Message: message}}
 }
 
 // DefaultServerID, DefaultMAC, DefaultIPv4 and the failover ids identify the
@@ -299,26 +300,35 @@ func (s *Server) scpHandlers() map[string]handler {
 		"DELETE /api/v1/rdns/ipv4/{ip}": s.deleteRDNS,
 		"DELETE /api/v1/rdns/ipv6/{ip}": s.deleteRDNS,
 
-		"GET /api/v1/servers":                    s.listServers,
-		"GET " + pathServer:                      s.getServer,
-		"PATCH " + pathServer:                    s.patchServer,
-		"GET " + pathInterfaces:                  s.listInterfaces,
-		"POST " + pathServer + "/iso":            s.attachIso,
-		"GET " + pathServer + "/iso":             s.getIso,
-		"DELETE " + pathServer + "/iso":          s.detachIso,
-		"POST " + pathServer + "/rescuesystem":   s.activateRescue,
-		"GET " + pathServer + "/rescuesystem":    s.getRescue,
-		"DELETE " + pathServer + "/rescuesystem": s.deactivateRescue,
-		"GET " + pathUser + "/vlans":             s.listUserVlans,
-		"GET " + pathUser + "/vlans/{vlanId}":    s.getUserVlan,
-		"PUT " + pathUser + "/vlans/{vlanId}":    s.putUserVlan,
-		"GET /api/v1/vlans/{vlanId}":             s.getVlan,
-		"POST " + pathInterfaces:                 s.createInterface,
-		"GET " + pathInterfaces + "/{mac}":       s.getInterface,
-		"PUT " + pathInterfaces + "/{mac}":       s.putInterface,
-		"DELETE " + pathInterfaces + "/{mac}":    s.deleteInterface,
-		"GET " + pathFirewall:                    s.getFirewall,
-		"PUT " + pathFirewall:                    s.putFirewall,
+		"GET /api/v1/servers":                               s.listServers,
+		"GET " + pathServer:                                 s.getServer,
+		"PATCH " + pathServer:                               s.patchServer,
+		"GET " + pathInterfaces:                             s.listInterfaces,
+		"POST " + pathServer + "/disks/{diskName}:format":   s.formatDisk,
+		"POST " + pathServer + "/image":                     s.setupImage,
+		"POST " + pathServer + "/user-image":                s.setupUserImage,
+		"POST " + pathServer + "/storageoptimization":       s.optimizeStorage,
+		"POST " + pathSnapshot + "/revert":                  s.revertSnapshot,
+		"POST " + pathSnapshot + "/export":                  s.exportSnapshot,
+		"POST " + pathFirewall + ":reapply":                 s.reapplyFirewall,
+		"POST " + pathFirewall + ":restore-copied-policies": s.restoreCopiedPolicies,
+		"PUT " + pathTask + ":cancel":                       s.cancelTask,
+		"POST " + pathServer + "/iso":                       s.attachIso,
+		"GET " + pathServer + "/iso":                        s.getIso,
+		"DELETE " + pathServer + "/iso":                     s.detachIso,
+		"POST " + pathServer + "/rescuesystem":              s.activateRescue,
+		"GET " + pathServer + "/rescuesystem":               s.getRescue,
+		"DELETE " + pathServer + "/rescuesystem":            s.deactivateRescue,
+		"GET " + pathUser + "/vlans":                        s.listUserVlans,
+		"GET " + pathUser + "/vlans/{vlanId}":               s.getUserVlan,
+		"PUT " + pathUser + "/vlans/{vlanId}":               s.putUserVlan,
+		"GET /api/v1/vlans/{vlanId}":                        s.getVlan,
+		"POST " + pathInterfaces:                            s.createInterface,
+		"GET " + pathInterfaces + "/{mac}":                  s.getInterface,
+		"PUT " + pathInterfaces + "/{mac}":                  s.putInterface,
+		"DELETE " + pathInterfaces + "/{mac}":               s.deleteInterface,
+		"GET " + pathFirewall:                               s.getFirewall,
+		"PUT " + pathFirewall:                               s.putFirewall,
 
 		"POST " + pathSnapshots:  s.createSnapshot,
 		"GET " + pathSnapshot:    s.getSnapshot,
@@ -364,7 +374,10 @@ func (s *Server) getTask(c *call) (int, any) {
 	if !ok {
 		return notFound()
 	}
-	if f := s.scp.failedTask; f != nil {
+	if t.State == "WAITING_FOR_CANCEL" {
+		return http.StatusOK, t
+	}
+	if f := s.scp.taskOverride; f != nil {
 		return http.StatusOK, &taskInfo{UUID: t.UUID, Name: t.Name, State: f.State, ResponseError: f.ResponseError}
 	}
 	return http.StatusOK, &taskInfo{UUID: t.UUID, Name: t.Name, State: "FINISHED"}
@@ -1484,4 +1497,144 @@ func (s *Server) PatchBodies() []string {
 		}
 	}
 	return out
+}
+
+// taskFor starts a task for an operation whose only effect tests read from
+// Requests.
+func (s *Server) taskFor(c *call, name string) (int, any) {
+	v := s.scpServer(c)
+	if v == nil {
+		return notFound()
+	}
+	return http.StatusAccepted, s.scp.startTask(name, v.ID)
+}
+
+func (s *Server) formatDisk(c *call) (int, any) {
+	v := s.scpServer(c)
+	if v == nil {
+		return notFound()
+	}
+	disk := c.params["diskName"]
+	if disk != "vda" && disk != "vdb" {
+		return notFound()
+	}
+	if v.live.State != "SHUTOFF" {
+		return badRequest("server is not in state SHUTOFF")
+	}
+	for _, snapshot := range s.scp.snapshots[v.ID] {
+		if slices.Contains(snapshot.Disks, disk) {
+			return badRequest("disk has snapshots")
+		}
+	}
+	return http.StatusAccepted, s.scp.startTask("ServerFormatDisk", v.ID)
+}
+
+func (s *Server) setupImage(c *call) (int, any) {
+	if s.scpServer(c) == nil {
+		s.checkServer(c)
+		return validationError("server not found")
+	}
+	return s.taskFor(c, "ServerSetupImage")
+}
+
+func (s *Server) setupUserImage(c *call) (int, any) {
+	if s.scpServer(c) == nil {
+		s.checkServer(c)
+		return validationError("server not found")
+	}
+	return s.taskFor(c, "ServerSetupUserImage")
+}
+
+func (s *Server) optimizeStorage(c *call) (int, any) {
+	v := s.scpServer(c)
+	if v == nil {
+		s.checkServer(c)
+		return http.StatusServiceUnavailable, responseError{Code: "error.mock", Message: "server not found"}
+	}
+	return http.StatusAccepted, s.scp.startTask("ServerStorageOptimization", v.ID)
+}
+
+func (s *Server) revertSnapshot(c *call) (int, any) {
+	v := s.scpServer(c)
+	if v == nil {
+		return notFound()
+	}
+	if _, ok := s.scp.snapshots[v.ID][c.params["name"]]; !ok {
+		return notFound()
+	}
+	return http.StatusAccepted, s.scp.startTask("ServerSnapshotRevert", v.ID)
+}
+
+func (s *Server) exportSnapshot(c *call) (int, any) {
+	v := s.scpServer(c)
+	if v == nil {
+		return notFound()
+	}
+	snap, ok := s.scp.snapshots[v.ID][c.params["name"]]
+	if !ok {
+		return notFound()
+	}
+	if v.live.State != "SHUTOFF" || v.ExportCount == 0 {
+		return badRequest("no more snapshots left or server is not in state shutoff")
+	}
+	size := int64(exportedSizeInKiB)
+	snap.Exported, snap.ExportedSizeInKiB = true, &size
+	return http.StatusAccepted, s.scp.startTask("ServerSnapshotExport", v.ID)
+}
+
+func (s *Server) reapplyFirewall(c *call) (int, any) {
+	if s.findInterface(c) == nil {
+		s.t.Errorf("reapply for unknown interface %s", c.params["mac"])
+	}
+	return http.StatusAccepted, s.scp.startTask("ServerFirewallReapply", defaultServerID)
+}
+
+func (s *Server) restoreCopiedPolicies(c *call) (int, any) {
+	if s.findInterface(c) == nil {
+		return notFound()
+	}
+	return s.taskFor(c, "ServerFirewallRestore")
+}
+
+func (s *Server) cancelTask(c *call) (int, any) {
+	t, ok := s.scp.tasks[c.params["uuid"]]
+	if !ok {
+		s.t.Errorf("cancel of unknown task %s", c.params["uuid"])
+		return http.StatusNoContent, nil
+	}
+	if t.State == "FINISHED" {
+		return http.StatusNoContent, nil
+	}
+	t.State = "WAITING_FOR_CANCEL"
+	return http.StatusAccepted, t
+}
+
+// AddSnapshot adds a snapshot of the default server outside of Terraform.
+func (s *Server) AddSnapshot(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.snapshots[defaultServerID][name] = &snapshot{
+		UUID: "snap-" + name, Name: name, Disks: []string{"vda"}, CreationTime: snapshotCreated, State: "SHUTOFF",
+	}
+}
+
+// HoldTasks keeps every task in state RUNNING.
+func (s *Server) HoldTasks() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.taskOverride = &taskInfo{State: "RUNNING"}
+}
+
+// FinishTask ends a task started with StartTask.
+func (s *Server) FinishTask(uuid string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.tasks[uuid].State = "FINISHED"
+}
+
+// StartTask starts a task outside of Terraform and returns its UUID.
+func (s *Server) StartTask() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.scp.startTask("ServerMockTask", defaultServerID).UUID
 }

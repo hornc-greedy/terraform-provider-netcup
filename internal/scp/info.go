@@ -365,3 +365,91 @@ func (c *Client) DeactivateRescueSystem(ctx context.Context, serverID int) error
 	}
 	return c.waitForTask(ctx, task.UUID)
 }
+
+// postTask sends a POST that starts a task and waits for it.
+func (c *Client) postTask(ctx context.Context, path string, body any) error {
+	var task TaskInfo
+	if err := c.do(ctx, http.MethodPost, path, body, &task); err != nil {
+		return err
+	}
+	return c.waitForTask(ctx, task.UUID)
+}
+
+// FormatDisk formats a disk and waits for the task. All data on it is lost.
+func (c *Client) FormatDisk(ctx context.Context, serverID int, diskName string) error {
+	return c.postTask(ctx, serverPath(serverID)+"/disks/"+url.PathEscape(diskName)+":format", nil)
+}
+
+// ServerImageSetup mirrors the ServerImageSetup schema.
+type ServerImageSetup struct {
+	ImageFlavourID            *int64  `json:"imageFlavourId,omitempty"`
+	DiskName                  *string `json:"diskName,omitempty"`
+	RootPartitionFullDiskSize *bool   `json:"rootPartitionFullDiskSize,omitempty"`
+	Hostname                  *string `json:"hostname,omitempty"`
+	Locale                    *string `json:"locale,omitempty"`
+	Timezone                  *string `json:"timezone,omitempty"`
+	AdditionalUserUsername    *string `json:"additionalUserUsername,omitempty"`
+	AdditionalUserPassword    *string `json:"additionalUserPassword,omitempty"`
+	SSHKeyIDs                 []int64 `json:"sshKeyIds,omitempty"`
+	SSHPasswordAuthentication *bool   `json:"sshPasswordAuthentication,omitempty"`
+	CustomScript              *string `json:"customScript,omitempty"`
+	EmailToExecutingUser      *bool   `json:"emailToExecutingUser,omitempty"`
+}
+
+// SetupImage installs an image and waits for the task. All data on the disk is
+// lost.
+func (c *Client) SetupImage(ctx context.Context, serverID int, setup ServerImageSetup) error {
+	return c.postTask(ctx, serverPath(serverID)+"/image", setup)
+}
+
+// ServerUserImageSetup mirrors the ServerUserImageSetup schema.
+type ServerUserImageSetup struct {
+	UserImageName     string  `json:"userImageName"`
+	DiskName          *string `json:"diskName,omitempty"`
+	EmailNotification *bool   `json:"emailNotification,omitempty"`
+}
+
+// SetupUserImage installs an uploaded image and waits for the task.
+func (c *Client) SetupUserImage(ctx context.Context, serverID int, setup ServerUserImageSetup) error {
+	return c.postTask(ctx, serverPath(serverID)+"/user-image", setup)
+}
+
+// OptimizeStorage optimizes the given disks and waits for the task.
+func (c *Client) OptimizeStorage(ctx context.Context, serverID int, disks []string, startAfterOptimization *bool) error {
+	query := url.Values{"disks": disks}
+	if startAfterOptimization != nil {
+		query.Set("startAfterOptimization", strconv.FormatBool(*startAfterOptimization))
+	}
+	path := serverPath(serverID) + "/storageoptimization"
+	if encoded := query.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	return c.postTask(ctx, path, nil)
+}
+
+// RevertSnapshot reverts a server to a snapshot and waits for the task.
+func (c *Client) RevertSnapshot(ctx context.Context, serverID int, name string) error {
+	return c.postTask(ctx, snapBase(serverID)+"/"+url.PathEscape(name)+"/revert", nil)
+}
+
+// ExportSnapshot exports a snapshot and waits for the task.
+func (c *Client) ExportSnapshot(ctx context.Context, serverID int, name string) error {
+	return c.postTask(ctx, snapBase(serverID)+"/"+url.PathEscape(name)+"/export", nil)
+}
+
+// ReapplyFirewall applies the firewall of an interface again and waits for the
+// task.
+func (c *Client) ReapplyFirewall(ctx context.Context, serverID int, mac string) error {
+	return c.postTask(ctx, sfwPath(serverID, mac)+":reapply", nil)
+}
+
+// RestoreCopiedPolicies restores the copied policies of an interface and waits
+// for the task.
+func (c *Client) RestoreCopiedPolicies(ctx context.Context, serverID int, mac string) error {
+	return c.postTask(ctx, sfwPath(serverID, mac)+":restore-copied-policies", nil)
+}
+
+// CancelTask asks netcup to cancel a running task.
+func (c *Client) CancelTask(ctx context.Context, uuid string) error {
+	return c.do(ctx, http.MethodPut, "/tasks/"+url.PathEscape(uuid)+":cancel", nil, nil)
+}

@@ -47,7 +47,7 @@ resource "netcup_server_settings" "web" {
 - `power_state` (String) `ON`, `OFF` or `SUSPENDED`. Changing it starts, shuts down or suspends the server.
 - `root_password_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Password of the root user. It stays out of plan and state and needs Terraform 1.11 or newer. It is sent on create, on the first apply after an import and whenever `root_password_wo_version` changes.
 - `root_password_wo_version` (Number) Change it to send `root_password_wo` again.
-- `state_option` (String) How netcup changes `power_state`, `POWERCYCLE` or `RESET` for `ON`, `POWEROFF` for `OFF`. It is only used when `power_state` differs from the live state and does not restart a running server.
+- `state_option` (String) How netcup changes `power_state`, `POWERCYCLE` or `RESET` for `ON`, `POWEROFF` for `OFF`. It is only used when `power_state` differs from the live state and does not restart a running server, the action `netcup_server_state` does.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `uefi` (Boolean) Whether the server boots with UEFI.
 

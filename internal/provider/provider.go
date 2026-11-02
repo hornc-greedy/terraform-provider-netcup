@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 
+	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
 	fwprov "github.com/hashicorp/terraform-plugin-framework/provider"
@@ -22,6 +23,7 @@ import (
 var (
 	_ fwprov.Provider                       = (*netcupProvider)(nil)
 	_ fwprov.ProviderWithEphemeralResources = (*netcupProvider)(nil)
+	_ fwprov.ProviderWithActions            = (*netcupProvider)(nil)
 )
 
 type netcupProvider struct {
@@ -86,7 +88,7 @@ func (p *netcupProvider) Schema(_ context.Context, _ fwprov.SchemaRequest, resp 
 				Optional:  true,
 				Sensitive: true,
 				MarkdownDescription: "SCP REST API offline refresh token (obtained once via the OIDC device flow). " +
-					"Required only for SCP resources/data sources (reverse DNS, servers and VLANs). " +
+					"Required only for SCP resources/data sources (reverse DNS, servers, VLANs and actions). " +
 					"May also be set via `NETCUP_SCP_REFRESH_TOKEN`.",
 			},
 			"scp_base_url": provschema.StringAttribute{
@@ -147,6 +149,7 @@ func (p *netcupProvider) Configure(ctx context.Context, req fwprov.ConfigureRequ
 	resp.ResourceData = data
 	resp.DataSourceData = data
 	resp.EphemeralResourceData = data
+	resp.ActionData = data
 }
 
 func (p *netcupProvider) Resources(_ context.Context) []func() resource.Resource {
@@ -214,6 +217,21 @@ func (p *netcupProvider) EphemeralResources(_ context.Context) []func() ephemera
 	return []func() ephemeral.EphemeralResource{
 		NewServerGPUDriverEphemeralResource,
 		NewServerRescueSystemEphemeralResource,
+	}
+}
+
+func (p *netcupProvider) Actions(_ context.Context) []func() action.Action {
+	return []func() action.Action{
+		NewServerDiskFormatAction,
+		NewServerImageSetupAction,
+		NewServerUserImageSetupAction,
+		NewServerStorageOptimizationAction,
+		NewServerSnapshotRevertAction,
+		NewServerSnapshotExportAction,
+		NewServerFirewallReapplyAction,
+		NewServerFirewallRestoreCopiedPoliciesAction,
+		NewTaskCancelAction,
+		NewServerStateAction,
 	}
 }
 

@@ -20,7 +20,7 @@ domains on CloudDNS and servers:
 ## Requirements
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
-  - ephemeral resources need 1.10, write-only attributes 1.11
+  - ephemeral resources need 1.10, write-only attributes 1.11, actions 1.14
 - [Go](https://go.dev/doc/install) >= 1.26 (to build the provider)
 
 ## Using the Provider
@@ -101,17 +101,36 @@ The refresh token stays valid as long as it is used at least once every 30 days.
 |---|---|---|---|---|
 | CCP DNS | `netcup_dns_record`, `netcup_dns_zone` | `netcup_dns_records` |  |  |
 | CloudDNS | `netcup_clouddns_record`, `netcup_clouddns_acme_challenge` | `netcup_clouddns_record`, `netcup_clouddns_domain`, `netcup_clouddns_domains`, `netcup_clouddns_records`, `netcup_clouddns_revision`, `netcup_clouddns_revisions`, `netcup_clouddns_record_types`, `netcup_clouddns_acme_challenges` |  |  |
-| Servers | `netcup_server_settings` | `netcup_servers`, `netcup_server`, `netcup_server_guest_agent`, `netcup_server_guest_agent_status` |  |  |
-| Disks | `netcup_server_disk_driver` | `netcup_server_disks`, `netcup_server_disk`, `netcup_server_disk_supported_drivers` |  |  |
-| Images, ISO and rescue | `netcup_server_iso`, `netcup_server_rescue_system` | `netcup_server_image_flavours`, `netcup_server_iso_images` | `netcup_server_rescue_system`, `netcup_server_gpu_driver` |  |
+| Servers | `netcup_server_settings` | `netcup_servers`, `netcup_server`, `netcup_server_guest_agent`, `netcup_server_guest_agent_status` |  | `netcup_server_state` |
+| Disks | `netcup_server_disk_driver` | `netcup_server_disks`, `netcup_server_disk`, `netcup_server_disk_supported_drivers` |  | `netcup_server_disk_format`, `netcup_server_storage_optimization` |
+| Images, ISO and rescue | `netcup_server_iso`, `netcup_server_rescue_system` | `netcup_server_image_flavours`, `netcup_server_iso_images` | `netcup_server_rescue_system`, `netcup_server_gpu_driver` | `netcup_server_image_setup`, `netcup_server_user_image_setup` |
 | Interfaces and reverse DNS | `netcup_server_interface`, `netcup_reverse_dns` | `netcup_server_interface`, `netcup_server_interfaces` |  |  |
 | Metrics and logs |  | `netcup_server_metrics_cpu`, `netcup_server_metrics_disk`, `netcup_server_metrics_network`, `netcup_server_metrics_network_packet`, `netcup_server_logs` |  |  |
-| Snapshots | `netcup_server_snapshot` | `netcup_server_snapshots`, `netcup_server_snapshot_dryrun` |  |  |
-| Firewall | `netcup_firewall_policy`, `netcup_server_firewall` | `netcup_firewall_policies` |  |  |
+| Snapshots | `netcup_server_snapshot` | `netcup_server_snapshots`, `netcup_server_snapshot_dryrun` |  | `netcup_server_snapshot_revert`, `netcup_server_snapshot_export` |
+| Firewall | `netcup_firewall_policy`, `netcup_server_firewall` | `netcup_firewall_policies` |  | `netcup_server_firewall_reapply`, `netcup_server_firewall_restore_copied_policies` |
 | Failover IPs | `netcup_failover_ip_route` | `netcup_failover_ips` |  |  |
 | VLANs | `netcup_user_vlan` | `netcup_user_vlan`, `netcup_vlan`, `netcup_user_vlans` |  |  |
 | User and SSH keys | `netcup_ssh_key` | `netcup_ssh_keys` |  |  |
-| Tasks and maintenance |  | `netcup_tasks`, `netcup_maintenance` (deprecated, removed in 2.0.0) |  |  |
+| Tasks and maintenance |  | `netcup_tasks`, `netcup_maintenance` (deprecated, removed in 2.0.0) |  | `netcup_task_cancel` |
+
+### Actions
+
+One-off operations are [Terraform actions](https://developer.hashicorp.com/terraform/language/invoke-actions)
+and need Terraform 1.14 or newer. OpenTofu does not support actions, see
+[opentofu#3309](https://github.com/opentofu/opentofu/issues/3309). They run with
+`terraform apply -invoke=action.<type>.<name>` or through `action_trigger`.
+
+| Action | Effect |
+|---|---|
+| `netcup_server_image_setup`, `netcup_server_user_image_setup` | installs an image, **all data on the disk is lost** |
+| `netcup_server_disk_format` | formats a disk of a stopped server, **all data on it is lost** |
+| `netcup_server_snapshot_revert` | reverts to a snapshot, **later changes are lost** |
+| `netcup_server_snapshot_export` | exports an offline snapshot, netcup includes one export per server |
+| `netcup_server_storage_optimization` | optimizes the storage |
+| `netcup_server_state` | changes the power state once, e.g. a restart |
+| `netcup_server_firewall_reapply` | applies the firewall of an interface again |
+| `netcup_server_firewall_restore_copied_policies` | restores the copied policies of an interface |
+| `netcup_task_cancel` | asks netcup to cancel a task |
 
 ## Notes and limitations
 

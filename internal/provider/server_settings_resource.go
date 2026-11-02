@@ -162,7 +162,7 @@ func (r *serverSettingsResource) Schema(ctx context.Context, _ resource.SchemaRe
 			},
 			"state_option": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "How netcup changes `power_state`, `POWERCYCLE` or `RESET` for `ON`, `POWEROFF` for `OFF`. It is only used when `power_state` differs from the live state and does not restart a running server.",
+				MarkdownDescription: "How netcup changes `power_state`, `POWERCYCLE` or `RESET` for `ON`, `POWEROFF` for `OFF`. It is only used when `power_state` differs from the live state and does not restart a running server, the action `netcup_server_state` does.",
 				Validators: []validator.String{
 					stringvalidator.OneOf("POWERCYCLE", "RESET", "POWEROFF"),
 					stringvalidator.AlsoRequires(path.MatchRoot("power_state")),

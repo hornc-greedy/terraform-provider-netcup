@@ -3,8 +3,10 @@
 package provider
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -1482,6 +1484,312 @@ resource "netcup_server_settings" "test" {
 		resource.TestStep{Config: config("OFF", "POWEROFF"), Check: lastOption("POWEROFF")},
 		resource.TestStep{Config: config("ON", "RESET"), Check: lastOption("RESET")},
 	))
+}
+
+// testMockAction runs an action through Terraform itself, because the testing
+// library has no support for actions.
+func testMockAction(m *mockapi.Server, actionType, config string, check resource.TestCheckFunc) resource.TestCase {
+	return resource.TestCase{
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_14_0)},
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{{
+			Config: testMockConfig(m, fmt.Sprintf(`
+action %[1]q "test" {
+  config {
+    %[2]s
+  }
+}
+
+variable "password" {
+  type      = string
+  sensitive = true
+  default   = "Secret123"
+}
+
+resource "terraform_data" "trigger" {
+  lifecycle {
+    action_trigger {
+      events  = [after_create]
+      actions = [action.%[1]s.test]
+    }
+  }
+}
+`, actionType, config)),
+			Check: check,
+		}},
+	}
+}
+
+func testMockRequested(m *mockapi.Server, method, path string) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		for _, r := range m.Requests() {
+			if r.Method == method && r.Path == path {
+				return nil
+			}
+		}
+		return fmt.Errorf("no %s %s in %+v", method, path, m.Requests())
+	}
+}
+
+func testMockServerPath(suffix string) string {
+	return fmt.Sprintf("/api/v1/servers/%d%s", mockapi.DefaultServerID, suffix)
+}
+
+func TestMockActionDiskFormat(t *testing.T) {
+	m := mockapi.New(t)
+	m.ShutOff()
+	resource.Test(t, testMockAction(m, "netcup_server_disk_format",
+		fmt.Sprintf(`server_id = %d
+    disk_name = "vda"`, mockapi.DefaultServerID),
+		testMockRequested(m, http.MethodPost, testMockServerPath("/disks/vda:format")),
+	))
+}
+
+// testMockBody compares the only body sent to path with want.
+func testMockBody(m *mockapi.Server, path, want string) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		for _, r := range m.Requests() {
+			if r.Path == path {
+				var got, expected any
+				if err := json.Unmarshal([]byte(r.Body), &got); err != nil {
+					return err
+				}
+				if err := json.Unmarshal([]byte(want), &expected); err != nil {
+					return err
+				}
+				if !reflect.DeepEqual(got, expected) {
+					return fmt.Errorf("body = %s, want %s", r.Body, want)
+				}
+				return nil
+			}
+		}
+		return fmt.Errorf("no request to %s", path)
+	}
+}
+
+func TestMockActionDiskFormatFailsOnRunningServer(t *testing.T) {
+	testCase := testMockAction(mockapi.New(t), "netcup_server_disk_format",
+		fmt.Sprintf(`server_id = %d
+    disk_name = "vda"`, mockapi.DefaultServerID), nil)
+	testCase.Steps[0].ExpectError = regexp.MustCompile("not in state SHUTOFF")
+	resource.Test(t, testCase)
+}
+
+func TestMockActionImageSetup(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockAction(m, "netcup_server_image_setup",
+		fmt.Sprintf(`server_id = %d
+    image_flavour_id = 1
+    disk_name = "vda"
+    root_partition_full_disk_size = true
+    hostname = "host.example.com"
+    locale = "de_DE.UTF-8"
+    timezone = "Europe/Berlin"
+    additional_user_username = "admin"
+    additional_user_password = var.password
+    ssh_key_ids = [7, 8]
+    ssh_password_authentication = false
+    custom_script = "echo hi"
+    email_to_executing_user = true`, mockapi.DefaultServerID),
+		testMockBody(m, testMockServerPath("/image"), `{
+			"imageFlavourId": 1, "diskName": "vda", "rootPartitionFullDiskSize": true,
+			"hostname": "host.example.com", "locale": "de_DE.UTF-8", "timezone": "Europe/Berlin",
+			"additionalUserUsername": "admin", "additionalUserPassword": "Secret123",
+			"sshKeyIds": [7, 8], "sshPasswordAuthentication": false, "customScript": "echo hi",
+			"emailToExecutingUser": true
+		}`),
+	))
+}
+
+func TestMockActionImageSetupSendsOnlyTheConfig(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockAction(m, "netcup_server_image_setup",
+		fmt.Sprintf(`server_id = %d`, mockapi.DefaultServerID),
+		testMockBody(m, testMockServerPath("/image"), `{}`),
+	))
+}
+
+func TestMockActionImageSetupValidates(t *testing.T) {
+	for attribute, config := range map[string]string{
+		"additional_user_username": `additional_user_username = "Admin"`,
+		"hostname":                 `hostname = "-bad-"`,
+	} {
+		t.Run(attribute, func(t *testing.T) {
+			testCase := testMockAction(mockapi.New(t), "netcup_server_image_setup",
+				fmt.Sprintf("server_id = %d\n    %s", mockapi.DefaultServerID, config), nil)
+			testCase.Steps[0].ExpectError = regexp.MustCompile("Invalid Attribute Value Match")
+			resource.Test(t, testCase)
+		})
+	}
+}
+
+func TestMockActionUserImageSetup(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockAction(m, "netcup_server_user_image_setup",
+		fmt.Sprintf(`server_id = %d
+    user_image_name = "custom.img"
+    disk_name = "vda"
+    email_notification = true`, mockapi.DefaultServerID),
+		testMockBody(m, testMockServerPath("/user-image"), `{"userImageName": "custom.img", "diskName": "vda", "emailNotification": true}`),
+	))
+}
+
+func TestMockActionStorageOptimization(t *testing.T) {
+	m := mockapi.New(t)
+	path := testMockServerPath("/storageoptimization")
+	resource.Test(t, testMockAction(m, "netcup_server_storage_optimization",
+		fmt.Sprintf(`server_id = %d
+    disks = ["vda", "vdb"]
+    start_after_optimization = true`, mockapi.DefaultServerID),
+		func(*terraform.State) error {
+			for _, r := range m.Requests() {
+				if r.Path == path {
+					if !slices.Equal(r.Query["disks"], []string{"vda", "vdb"}) || r.Query.Get("startAfterOptimization") != "true" {
+						return fmt.Errorf("query = %v", r.Query)
+					}
+					return nil
+				}
+			}
+			return fmt.Errorf("no request to %s", path)
+		},
+	))
+}
+
+func testMockSnapshotAction(t *testing.T, actionType, suffix string) {
+	t.Helper()
+	m := mockapi.New(t)
+	m.ShutOff()
+	m.AddSnapshot("s")
+	resource.Test(t, testMockAction(m, actionType,
+		fmt.Sprintf(`server_id = %d
+    name = "s"`, mockapi.DefaultServerID),
+		testMockRequested(m, http.MethodPost, testMockServerPath("/snapshots/s/"+suffix)),
+	))
+}
+
+func TestMockActionSnapshotRevert(t *testing.T) {
+	testMockSnapshotAction(t, "netcup_server_snapshot_revert", "revert")
+}
+
+func TestMockActionSnapshotExport(t *testing.T) {
+	testMockSnapshotAction(t, "netcup_server_snapshot_export", "export")
+}
+
+func TestMockActionSnapshotExportFailsOnRunningServer(t *testing.T) {
+	m := mockapi.New(t)
+	m.AddSnapshot("s")
+	testCase := testMockAction(m, "netcup_server_snapshot_export",
+		fmt.Sprintf(`server_id = %d
+    name = "s"`, mockapi.DefaultServerID), nil)
+	testCase.Steps[0].ExpectError = regexp.MustCompile("no more snapshots left")
+	resource.Test(t, testCase)
+}
+
+func testMockFirewallAction(t *testing.T, actionType, suffix string) {
+	t.Helper()
+	m := mockapi.New(t)
+	resource.Test(t, testMockAction(m, actionType,
+		fmt.Sprintf(`server_id = %d
+    mac = %q`, mockapi.DefaultServerID, mockapi.DefaultMAC),
+		testMockRequested(m, http.MethodPost, testMockServerPath("/interfaces/"+mockapi.DefaultMAC+"/firewall:"+suffix)),
+	))
+}
+
+func TestMockActionFirewallReapply(t *testing.T) {
+	testMockFirewallAction(t, "netcup_server_firewall_reapply", "reapply")
+}
+
+func TestMockActionFirewallRestore(t *testing.T) {
+	testMockFirewallAction(t, "netcup_server_firewall_restore_copied_policies", "restore-copied-policies")
+}
+
+func TestMockActionFirewallValidatesMac(t *testing.T) {
+	testCase := testMockAction(mockapi.New(t), "netcup_server_firewall_reapply",
+		fmt.Sprintf(`server_id = %d
+    mac = "nope"`, mockapi.DefaultServerID), nil)
+	testCase.Steps[0].ExpectError = regexp.MustCompile("must be a MAC address")
+	resource.Test(t, testCase)
+}
+
+func TestMockActionTaskCancelOfFinishedTask(t *testing.T) {
+	m := mockapi.New(t)
+	uuid := m.StartTask()
+	m.FinishTask(uuid)
+	resource.Test(t, testMockAction(m, "netcup_task_cancel",
+		fmt.Sprintf(`uuid = %q`, uuid),
+		testMockRequested(m, http.MethodPut, "/api/v1/tasks/"+uuid+":cancel"),
+	))
+}
+
+func TestMockActionTaskCancel(t *testing.T) {
+	m := mockapi.New(t)
+	uuid := m.StartTask()
+	resource.Test(t, testMockAction(m, "netcup_task_cancel",
+		fmt.Sprintf(`uuid = %q`, uuid),
+		testMockRequested(m, http.MethodPut, "/api/v1/tasks/"+uuid+":cancel"),
+	))
+}
+
+func TestMockActionServerState(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockAction(m, "netcup_server_state",
+		fmt.Sprintf(`server_id = %d
+    state = "ON"
+    state_option = "RESET"`, mockapi.DefaultServerID),
+		func(*terraform.State) error {
+			for _, r := range m.Requests() {
+				if r.Method == http.MethodPatch {
+					if r.Query.Get("stateOption") != "RESET" || !strings.Contains(r.Body, `"state":"ON"`) {
+						return fmt.Errorf("request = %+v", r)
+					}
+					return nil
+				}
+			}
+			return fmt.Errorf("no PATCH request")
+		},
+	))
+}
+
+func TestMockActionServerStateValidates(t *testing.T) {
+	for _, tc := range []struct{ state, option, want string }{
+		{"OFF", "RESET", "does not fit state OFF"},
+		{"SUSPENDED", "RESET", "does not fit state SUSPENDED"},
+		{"ON", "POWEROFF", "does not fit state ON"},
+		{"HALF", "", "value must be one of"},
+	} {
+		t.Run(tc.state+"_"+tc.option, func(t *testing.T) {
+			config := fmt.Sprintf("server_id = %d\n    state = %q", mockapi.DefaultServerID, tc.state)
+			if tc.option != "" {
+				config += fmt.Sprintf("\n    state_option = %q", tc.option)
+			}
+			testCase := testMockAction(mockapi.New(t), "netcup_server_state", config, nil)
+			testCase.Steps[0].ExpectError = regexp.MustCompile(tc.want)
+			resource.Test(t, testCase)
+		})
+	}
+}
+
+func TestMockActionFailedTaskFailsTheApply(t *testing.T) {
+	m := mockapi.New(t)
+	m.ShutOff()
+	m.FailTasks("disk full")
+	testCase := testMockAction(m, "netcup_server_disk_format",
+		fmt.Sprintf(`server_id = %d
+    disk_name = "vda"`, mockapi.DefaultServerID), nil)
+	testCase.Steps[0].ExpectError = regexp.MustCompile("disk full")
+	resource.Test(t, testCase)
+}
+
+func TestMockActionTimeoutEndsTheWait(t *testing.T) {
+	m := mockapi.New(t)
+	m.ShutOff()
+	m.HoldTasks()
+	testCase := testMockAction(m, "netcup_server_disk_format",
+		fmt.Sprintf(`server_id = %d
+    disk_name = "vda"
+    timeouts = { invoke = "1s" }`, mockapi.DefaultServerID), nil)
+	testCase.Steps[0].ExpectError = regexp.MustCompile("context deadline exceeded")
+	resource.Test(t, testCase)
 }
 
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {

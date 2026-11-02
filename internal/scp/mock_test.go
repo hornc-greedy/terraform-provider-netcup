@@ -219,13 +219,14 @@ func TestMockRetriesInjectedFailures(t *testing.T) {
 }
 
 func TestMockRejectsBodylessWriteWithoutContentType(t *testing.T) {
-	c, _ := mockClient(t)
+	c, m := mockClient(t)
 	token, err := c.ensureToken(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	for method, path := range map[string]string{
 		http.MethodPost: fmt.Sprintf("/servers/%d/rescuesystem", mockapi.DefaultServerID),
+		http.MethodPut:  "/tasks/" + m.StartTask() + ":cancel",
 	} {
 		req, err := http.NewRequestWithContext(context.Background(), method, c.BaseURL+path, nil)
 		if err != nil {
