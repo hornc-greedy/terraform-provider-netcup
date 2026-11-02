@@ -5,6 +5,7 @@ package scp
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 )
 
@@ -55,10 +56,15 @@ func (c *Client) PatchServer(ctx context.Context, id int, patch any) error {
 	return c.waitForTask(ctx, task.UUID)
 }
 
-// PatchServerState changes the power state and waits for the task.
-func (c *Client) PatchServerState(ctx context.Context, id int, state string) error {
+// PatchServerState changes the power state with the given stateOption and waits
+// for the task. An empty option uses the default of netcup.
+func (c *Client) PatchServerState(ctx context.Context, id int, state, option string) error {
+	path := "/servers/" + strconv.Itoa(id)
+	if option != "" {
+		path += "?stateOption=" + url.QueryEscape(option)
+	}
 	var task TaskInfo
-	if err := c.send(ctx, "PATCH", "/servers/"+strconv.Itoa(id), "application/merge-patch+json", map[string]string{"state": state}, &task); err != nil {
+	if err := c.send(ctx, "PATCH", path, "application/merge-patch+json", map[string]string{"state": state}, &task); err != nil {
 		return err
 	}
 	return c.waitForTask(ctx, task.UUID)

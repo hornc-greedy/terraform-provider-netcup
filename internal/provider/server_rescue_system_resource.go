@@ -108,7 +108,7 @@ func (r *serverRescueSystemResource) Create(ctx context.Context, req resource.Cr
 		return
 	}
 	if server.LiveInfo.State != "SHUTOFF" {
-		if err := r.client.PatchServerState(ctx, serverID, "OFF"); err != nil {
+		if err := r.client.PatchServerState(ctx, serverID, "OFF", ""); err != nil {
 			resp.Diagnostics.AddError("Error shutting down server", err.Error())
 			return
 		}
@@ -123,7 +123,7 @@ func (r *serverRescueSystemResource) Create(ctx context.Context, req resource.Cr
 		resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 	}
 	if server.LiveInfo.State == "RUNNING" {
-		if err := r.client.PatchServerState(ctx, serverID, "ON"); err != nil {
+		if err := r.client.PatchServerState(ctx, serverID, "ON", ""); err != nil {
 			resp.Diagnostics.AddError("Error starting server", err.Error())
 		}
 	}
@@ -189,7 +189,7 @@ func (r *serverRescueSystemResource) Delete(ctx context.Context, req resource.De
 		return
 	}
 	if server.LiveInfo.State == "RUNNING" {
-		if err := r.client.PatchServerState(ctx, serverID, "ON"); err != nil {
+		if err := r.client.PatchServerState(ctx, serverID, "ON", ""); err != nil {
 			resp.Diagnostics.AddError("Error starting server", err.Error())
 		}
 	}

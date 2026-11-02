@@ -465,6 +465,16 @@ func (s *Server) patchServer(c *call) (int, any) {
 		s.t.Errorf("PATCH server takes one attribute per request: %s", c.body)
 		return http.StatusServiceUnavailable, responseError{Code: "error.mock", Message: "only one schema at a time"}
 	}
+	if option := c.query.Get("stateOption"); option != "" {
+		state := ""
+		if err := json.Unmarshal(patch["state"], &state); err != nil {
+			s.t.Errorf("stateOption %s without state: %s", option, c.body)
+		}
+		valid := map[string][]string{"ON": {"POWERCYCLE", "RESET"}, "OFF": {"POWEROFF"}}
+		if !slices.Contains(valid[state], option) {
+			s.t.Errorf("stateOption %s does not fit state %s", option, state)
+		}
+	}
 	for key, raw := range patch {
 		if err := s.checkServerPatch(key, c.body); err != nil {
 			s.t.Errorf("PATCH server %s violates the specification: %v", key, err)

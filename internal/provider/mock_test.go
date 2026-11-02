@@ -4,6 +4,7 @@ package provider
 
 import (
 	"fmt"
+	"net/http"
 	"regexp"
 	"slices"
 	"strconv"
@@ -1449,6 +1450,38 @@ resource "netcup_server_settings" "test" {
 			ExpectError: regexp.MustCompile("Invalid Attribute Combination"),
 		}},
 	})
+}
+
+func TestMockServerSettingsStateOption(t *testing.T) {
+	m := mockapi.New(t)
+	config := func(state, option string) string {
+		return testMockConfig(m, fmt.Sprintf(`
+resource "netcup_server_settings" "test" {
+  server_id    = %d
+  power_state  = %q
+  state_option = %q
+}
+`, mockapi.DefaultServerID, state, option))
+	}
+	lastOption := func(want string) resource.TestCheckFunc {
+		return func(*terraform.State) error {
+			requests := m.Requests()
+			for i := len(requests) - 1; i >= 0; i-- {
+				if requests[i].Method == http.MethodPatch {
+					if got := requests[i].Query.Get("stateOption"); got != want {
+						return fmt.Errorf("stateOption = %q, want %q", got, want)
+					}
+					return nil
+				}
+			}
+			return fmt.Errorf("no PATCH request")
+		}
+	}
+	resource.Test(t, testMockCase(
+		resource.TestStep{Config: config("OFF", "POWERCYCLE"), ExpectError: regexp.MustCompile("Invalid state_option")},
+		resource.TestStep{Config: config("OFF", "POWEROFF"), Check: lastOption("POWEROFF")},
+		resource.TestStep{Config: config("ON", "RESET"), Check: lastOption("RESET")},
+	))
 }
 
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {

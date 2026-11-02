@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strconv"
 	"time"
@@ -28,9 +29,10 @@ import (
 )
 
 var (
-	_ resource.Resource                = (*serverSettingsResource)(nil)
-	_ resource.ResourceWithConfigure   = (*serverSettingsResource)(nil)
-	_ resource.ResourceWithImportState = (*serverSettingsResource)(nil)
+	_ resource.Resource                   = (*serverSettingsResource)(nil)
+	_ resource.ResourceWithConfigure      = (*serverSettingsResource)(nil)
+	_ resource.ResourceWithImportState    = (*serverSettingsResource)(nil)
+	_ resource.ResourceWithValidateConfig = (*serverSettingsResource)(nil)
 )
 
 type serverSettingsResource struct {
@@ -56,6 +58,7 @@ type serverSettingsModel struct {
 	KeyboardLayout        types.String   `tfsdk:"keyboard_layout"`
 	BackupTime            types.String   `tfsdk:"backup_time"`
 	PowerState            types.String   `tfsdk:"power_state"`
+	StateOption           types.String   `tfsdk:"state_option"`
 	RootPasswordWO        types.String   `tfsdk:"root_password_wo"`
 	RootPasswordWOVersion types.Int64    `tfsdk:"root_password_wo_version"`
 	Timeouts              timeouts.Value `tfsdk:"timeouts"`
@@ -157,6 +160,14 @@ func (r *serverSettingsResource) Schema(ctx context.Context, _ resource.SchemaRe
 				Validators:          []validator.String{stringvalidator.OneOf("ON", "OFF", "SUSPENDED")},
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
+			"state_option": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "How netcup changes `power_state`, `POWERCYCLE` or `RESET` for `ON`, `POWEROFF` for `OFF`. It is only used when `power_state` differs from the live state and does not restart a running server.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("POWERCYCLE", "RESET", "POWEROFF"),
+					stringvalidator.AlsoRequires(path.MatchRoot("power_state")),
+				},
+			},
 			"root_password_wo": schema.StringAttribute{
 				Optional:            true,
 				WriteOnly:           true,
@@ -174,6 +185,21 @@ func (r *serverSettingsResource) Schema(ctx context.Context, _ resource.SchemaRe
 				Update: true,
 			}),
 		},
+	}
+}
+
+// ValidateConfig enforces the rule of the specification which stateOption fits
+// which state.
+func (r *serverSettingsResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var cfg serverSettingsModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfg)...)
+	if resp.Diagnostics.HasError() || cfg.StateOption.IsNull() || cfg.StateOption.IsUnknown() || cfg.PowerState.IsNull() || cfg.PowerState.IsUnknown() {
+		return
+	}
+	valid := map[string][]string{"ON": {"POWERCYCLE", "RESET"}, "OFF": {"POWEROFF"}}
+	if !slices.Contains(valid[cfg.PowerState.ValueString()], cfg.StateOption.ValueString()) {
+		resp.Diagnostics.AddAttributeError(path.Root("state_option"), "Invalid state_option",
+			fmt.Sprintf("%s does not fit power_state %s.", cfg.StateOption.ValueString(), cfg.PowerState.ValueString()))
 	}
 }
 
@@ -293,7 +319,12 @@ func (r *serverSettingsResource) write(ctx context.Context, plan *serverSettings
 		patches = slices.Insert(patches, position, map[string]any{"rootPassword": *rootPassword})
 	}
 	for _, p := range patches {
-		if err := r.client.PatchServer(ctx, id, p); err != nil {
+		if _, ok := p["state"]; ok {
+			err = r.client.PatchServerState(ctx, id, plan.PowerState.ValueString(), plan.StateOption.ValueString())
+		} else {
+			err = r.client.PatchServer(ctx, id, p)
+		}
+		if err != nil {
 			return err
 		}
 	}
