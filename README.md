@@ -110,7 +110,7 @@ The refresh token stays valid as long as it is used at least once every 30 days.
 | Firewall | `netcup_firewall_policy`, `netcup_server_firewall` | `netcup_firewall_policies` |  | `netcup_server_firewall_reapply`, `netcup_server_firewall_restore_copied_policies` |
 | Failover IPs | `netcup_failover_ip_route` | `netcup_failover_ips` |  |  |
 | VLANs | `netcup_user_vlan` | `netcup_user_vlan`, `netcup_vlan`, `netcup_user_vlans` |  |  |
-| User and SSH keys | `netcup_ssh_key` | `netcup_ssh_keys` |  |  |
+| User and SSH keys | `netcup_user`, `netcup_ssh_key` | `netcup_user`, `netcup_user_logs`, `netcup_ssh_keys` |  |  |
 | Tasks and maintenance |  | `netcup_tasks`, `netcup_maintenance` (deprecated, removed in 2.0.0) |  | `netcup_task_cancel` |
 
 ### Actions

@@ -175,7 +175,7 @@ func (c *Client) exchange(ctx context.Context, method, target, contentType strin
 			attempt--
 			continue
 		}
-		if attempt < maxAttempts && ctx.Err() == nil && retryable(method, status, err) {
+		if attempt < maxAttempts && ctx.Err() == nil && ctx.Value(sendOnceKey{}) == nil && retryable(method, status, err) {
 			select {
 			case <-ctx.Done():
 				return 0, nil, ctx.Err()
@@ -187,6 +187,10 @@ func (c *Client) exchange(ctx context.Context, method, target, contentType strin
 		return status, raw, err
 	}
 }
+
+// sendOnceKey marks a context whose requests are not idempotent despite their
+// method.
+type sendOnceKey struct{}
 
 // retryable reports whether sending the request again has no further effect.
 func retryable(method string, status int, err error) bool {

@@ -139,6 +139,7 @@ type scpState struct {
 	failoverV6        map[int]*failoverIP
 	tasks             map[string]*taskInfo
 	taskOverride      *taskInfo
+	user              user
 	gpuAvailable      bool
 	secondDiskDriver  string
 	diskDrivers       map[int]string
@@ -164,8 +165,12 @@ func newSCPState() *scpState {
 				},
 			},
 		},
-		interfaces:   map[int][]*serverInterface{defaultServerID: {{mac: defaultMAC, driver: "VIRTIO"}}},
-		vlans:        map[int]*vlan{VlanID: {name: "default"}, ForeignVlanID: {name: "foreign", foreign: true}},
+		interfaces: map[int][]*serverInterface{defaultServerID: {{mac: defaultMAC, driver: "VIRTIO"}}},
+		vlans:      map[int]*vlan{VlanID: {name: "default"}, ForeignVlanID: {name: "foreign", foreign: true}},
+		user: user{
+			ID: UserID, Username: "mock", Firstname: "Ada", Lastname: "Lovelace", Email: "ada@example.com",
+			Language: "en", TimeZone: &defaultTimeZone, ShowNickname: true,
+		},
 		attachedIso:  map[int]string{},
 		rescueActive: map[int]bool{},
 		isoBody:      map[int]string{},
@@ -351,6 +356,9 @@ func (s *Server) scpHandlers() map[string]handler {
 		"GET " + pathSnapshots:                           s.listSnapshots,
 		"POST " + pathSnapshots + ":dryrun":              s.dryRunSnapshot,
 		"GET /api/v1/tasks":                              s.listTasks,
+		"GET /api/v1/users/{userId}":                     s.getUser,
+		"PUT /api/v1/users/{userId}":                     s.putUser,
+		"GET /api/v1/users/{userId}/logs":                s.listUserLogs,
 
 		"GET " + pathFailoverV4:             s.listFailoverV4,
 		"GET " + pathFailoverV6:             s.listFailoverV6,
@@ -1637,4 +1645,82 @@ func (s *Server) StartTask() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.scp.startTask("ServerMockTask", defaultServerID).UUID
+}
+
+var defaultTimeZone = "Europe/Berlin"
+
+// user mirrors the User schema.
+type user struct {
+	ID                     int     `json:"id"`
+	Username               string  `json:"username"`
+	Firstname              string  `json:"firstname"`
+	Lastname               string  `json:"lastname"`
+	Email                  string  `json:"email"`
+	Company                *string `json:"company"`
+	Language               string  `json:"language"`
+	TimeZone               *string `json:"timeZone"`
+	ShowNickname           bool    `json:"showNickname"`
+	PasswordlessMode       bool    `json:"passwordlessMode"`
+	APIIPLoginRestrictions *string `json:"apiIpLoginRestrictions"`
+}
+
+func (s *Server) getUser(c *call) (int, any) {
+	s.checkUser(c)
+	return http.StatusOK, s.scp.user
+}
+
+// putUser stores a UserSave. Assumption: an empty apiIpLoginRestrictions removes
+// the restrictions and reads back as null.
+func (s *Server) putUser(c *call) (int, any) {
+	s.checkUser(c)
+	var body struct {
+		ID                     int     `json:"id"`
+		Language               string  `json:"language"`
+		TimeZone               string  `json:"timeZone"`
+		APIIPLoginRestrictions *string `json:"apiIpLoginRestrictions"`
+		ShowNickname           *bool   `json:"showNickname"`
+		PasswordlessMode       *bool   `json:"passwordlessMode"`
+	}
+	if err := c.decode(&body); err != nil {
+		return validationError(err.Error())
+	}
+	u := &s.scp.user
+	u.Language, u.TimeZone = body.Language, &body.TimeZone
+	if r := body.APIIPLoginRestrictions; r != nil {
+		u.APIIPLoginRestrictions = r
+		if *r == "" {
+			u.APIIPLoginRestrictions = nil
+		}
+	}
+	if body.ShowNickname != nil {
+		u.ShowNickname = *body.ShowNickname
+	}
+	if body.PasswordlessMode != nil {
+		u.PasswordlessMode = *body.PasswordlessMode
+	}
+	return http.StatusOK, map[string]any{"id": u.ID, "language": u.Language, "timeZone": body.TimeZone}
+}
+
+// SetUserSettings changes settings of the user outside of Terraform.
+func (s *Server) SetUserSettings(company, restrictions string, passwordless bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.user.Company, s.scp.user.APIIPLoginRestrictions, s.scp.user.PasswordlessMode = &company, &restrictions, passwordless
+}
+
+// ChangeUserID makes GET of the user return another id, as another refresh token
+// would.
+func (s *Server) ChangeUserID(id int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scp.user.ID = id
+}
+
+func (s *Server) listUserLogs(c *call) (int, any) {
+	s.checkUser(c)
+	all := []map[string]any{
+		{"type": "INFO", "date": snapshotCreated, "logKey": "user.login", "message": "login", "executingUser": map[string]any{"id": UserID, "username": "mock"}},
+		{"type": "WARNING", "date": snapshotCreated, "logKey": "user.changed", "message": "changed"},
+	}
+	return http.StatusOK, page(all, c)
 }

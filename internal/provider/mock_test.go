@@ -1792,6 +1792,227 @@ func TestMockActionTimeoutEndsTheWait(t *testing.T) {
 	resource.Test(t, testCase)
 }
 
+func testMockUserBodies(m *mockapi.Server) []string {
+	var bodies []string
+	for _, r := range m.Requests() {
+		if r.Method == http.MethodPut && r.Path == fmt.Sprintf("/api/v1/users/%d", mockapi.UserID) {
+			bodies = append(bodies, r.Body)
+		}
+	}
+	return bodies
+}
+
+func testMockUserConfig(m *mockapi.Server, language, extra string) string {
+	return testMockConfig(m, fmt.Sprintf(`
+resource "netcup_user" "test" {
+  language  = %q
+  time_zone = "Europe/Vienna"
+  %s
+}
+`, language, extra))
+}
+
+// testMockLastUserBody checks what the last PUT contained.
+func testMockLastUserBody(m *mockapi.Server, wanted, unwanted []string) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		bodies := testMockUserBodies(m)
+		if len(bodies) == 0 {
+			return fmt.Errorf("no PUT")
+		}
+		last := bodies[len(bodies)-1]
+		for _, want := range wanted {
+			if !strings.Contains(last, want) {
+				return fmt.Errorf("body %s lacks %s", last, want)
+			}
+		}
+		for _, not := range unwanted {
+			if strings.Contains(last, not) {
+				return fmt.Errorf("body %s has %s", last, not)
+			}
+		}
+		return nil
+	}
+}
+
+func testMockUserCase(steps ...resource.TestStep) resource.TestCase {
+	return resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_11_0)},
+		Steps:                    steps,
+	}
+}
+
+func TestMockUser(t *testing.T) {
+	m := mockapi.New(t)
+	m.SetUserSettings("ACME", "192.0.2.1", true)
+	check := func(name, value string) resource.TestCheckFunc {
+		return resource.TestCheckResourceAttr("netcup_user.test", name, value)
+	}
+	resource.Test(t, testMockUserCase(
+		resource.TestStep{
+			// Unset settings keep what netcup has.
+			Config: testMockUserConfig(m, "de", ""),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				check("id", strconv.Itoa(mockapi.UserID)),
+				check("username", "mock"),
+				check("company", "ACME"),
+				check("language", "de"),
+				check("time_zone", "Europe/Vienna"),
+				check("show_nickname", "true"),
+				check("passwordless_mode", "true"),
+				check("api_ip_login_restrictions", "192.0.2.1"),
+				testMockLastUserBody(m, []string{
+					`"showNickname":true`, `"passwordlessMode":true`, `"apiIpLoginRestrictions":"192.0.2.1"`, fmt.Sprintf(`"id":%d`, mockapi.UserID),
+				}, []string{`"password"`, `"oldPassword"`}),
+			),
+		},
+		resource.TestStep{
+			ResourceName:            "netcup_user.test",
+			ImportState:             true,
+			ImportStateId:           strconv.Itoa(mockapi.UserID),
+			ImportStateVerify:       true,
+			ImportStateVerifyIgnore: []string{"timeouts"},
+		},
+		resource.TestStep{
+			Config: testMockUserConfig(m, "en", `show_nickname = false
+  passwordless_mode = false
+  api_ip_login_restrictions = "192.0.2.2"`),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				check("language", "en"),
+				check("show_nickname", "false"),
+				check("passwordless_mode", "false"),
+				check("api_ip_login_restrictions", "192.0.2.2"),
+			),
+		},
+		resource.TestStep{
+			// Settings removed from the config stay.
+			Config: testMockUserConfig(m, "de", ""),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				check("show_nickname", "false"),
+				check("api_ip_login_restrictions", "192.0.2.2"),
+				testMockLastUserBody(m, []string{`"showNickname":false`, `"apiIpLoginRestrictions":"192.0.2.2"`}, nil),
+			),
+		},
+		resource.TestStep{
+			Config: testMockUserConfig(m, "de", `api_ip_login_restrictions = ""`),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				check("api_ip_login_restrictions", ""),
+				testMockLastUserBody(m, []string{`"apiIpLoginRestrictions":""`}, nil),
+			),
+		},
+	))
+}
+
+func TestMockUserPasswords(t *testing.T) {
+	m := mockapi.New(t)
+	password := func(version int) string {
+		return fmt.Sprintf(`password_wo = "NewSecret%[1]d"
+  old_password_wo = "OldSecret%[1]d"
+  password_wo_version = %[1]d`, version)
+	}
+	soap := func(version int) string {
+		return fmt.Sprintf(`soap_webservice_password_wo = "SoapSecret%[1]d"
+  soap_webservice_password_wo_version = %[1]d`, version)
+	}
+	resource.Test(t, testMockUserCase(
+		resource.TestStep{
+			Config: testMockUserConfig(m, "de", password(1)+"\n  "+soap(1)),
+			Check: testMockLastUserBody(m, []string{
+				`"password":"NewSecret1"`, `"oldPassword":"OldSecret1"`, `"soapWebservicePassword":"SoapSecret1"`,
+			}, nil),
+		},
+		resource.TestStep{
+			Config: testMockUserConfig(m, "en", password(1)+"\n  "+soap(1)),
+			Check:  testMockLastUserBody(m, nil, []string{"Secret"}),
+		},
+		resource.TestStep{
+			Config: testMockUserConfig(m, "en", password(2)+"\n  "+soap(1)),
+			Check:  testMockLastUserBody(m, []string{`"password":"NewSecret2"`, `"oldPassword":"OldSecret2"`}, []string{"SoapSecret"}),
+		},
+		resource.TestStep{
+			Config: testMockUserConfig(m, "en", password(2)+"\n  "+soap(2)),
+			Check:  testMockLastUserBody(m, []string{`"soapWebservicePassword":"SoapSecret2"`}, []string{"NewSecret"}),
+		},
+		resource.TestStep{
+			Config: testMockUserConfig(m, "de", ""),
+			Check:  testMockLastUserBody(m, nil, []string{"Secret"}),
+		},
+	))
+}
+
+func TestMockUserValidates(t *testing.T) {
+	for name, tc := range map[string]struct{ config, want string }{
+		"password without version":      {`password_wo = "x"`, "password_wo_version"},
+		"version without password":      {`password_wo_version = 1`, "password_wo"},
+		"old password without password": {`old_password_wo = "x"`, "password_wo"},
+		"soap without version":          {`soap_webservice_password_wo = "x"`, "soap_webservice_password_wo_version"},
+		"soap version without password": {`soap_webservice_password_wo_version = 1`, "soap_webservice_password_wo"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			step := resource.TestStep{Config: testMockUserConfig(mockapi.New(t), "de", tc.config), ExpectError: regexp.MustCompile(tc.want)}
+			resource.Test(t, testMockUserCase(step))
+		})
+	}
+	step := resource.TestStep{Config: testMockUserConfig(mockapi.New(t), "english", ""), ExpectError: regexp.MustCompile("value must be one of")}
+	resource.Test(t, testMockUserCase(step))
+}
+
+func TestMockUserOfAnotherTokenIsNotAdopted(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockUserCase(
+		resource.TestStep{Config: testMockUserConfig(m, "de", "")},
+		resource.TestStep{
+			PreConfig:          func() { m.ChangeUserID(mockapi.UserID + 1) },
+			RefreshState:       true,
+			ExpectNonEmptyPlan: true,
+		},
+	))
+}
+
+func TestMockUserImportOfOtherUserFails(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{{
+			Config: testMockConfig(m, `resource "netcup_user" "test" {
+  language  = "de"
+  time_zone = "Europe/Vienna"
+}
+`),
+			ResourceName:  "netcup_user.test",
+			ImportState:   true,
+			ImportStateId: "1",
+			ExpectError:   regexp.MustCompile("not the user of the refresh token"),
+		}},
+	})
+}
+
+func TestMockUserDataSources(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{{
+			Config: testMockConfig(m, `
+data "netcup_user" "test" {}
+
+data "netcup_user_logs" "test" {
+  limit = 1
+}
+`),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr("data.netcup_user.test", "id", strconv.Itoa(mockapi.UserID)),
+				resource.TestCheckResourceAttr("data.netcup_user.test", "email", "ada@example.com"),
+				resource.TestCheckResourceAttr("data.netcup_user.test", "time_zone", "Europe/Berlin"),
+				resource.TestCheckResourceAttr("data.netcup_user.test", "show_nickname", "true"),
+				resource.TestCheckNoResourceAttr("data.netcup_user.test", "company"),
+				resource.TestCheckResourceAttr("data.netcup_user_logs.test", "logs.#", "1"),
+				resource.TestCheckResourceAttr("data.netcup_user_logs.test", "logs.0.log_key", "user.login"),
+				resource.TestCheckResourceAttr("data.netcup_user_logs.test", "logs.0.executing_user.username", "mock"),
+			),
+		}},
+	})
+}
+
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {
 	for attribute, object := range map[string]string{
 		"scp_refresh_token": `data "netcup_servers" "test" {}`,

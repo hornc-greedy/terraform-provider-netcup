@@ -67,7 +67,7 @@ func (p *netcupProvider) Metadata(_ context.Context, _ fwprov.MetadataRequest, r
 func (p *netcupProvider) Schema(_ context.Context, _ fwprov.SchemaRequest, resp *fwprov.SchemaResponse) {
 	resp.Schema = provschema.Schema{
 		MarkdownDescription: "Manage netcup DNS via the CCP (DomainWebservice) API or the netcup API for " +
-			"domains on CloudDNS, and reverse DNS, servers and VLANs via the SCP REST API. The APIs use " +
+			"domains on CloudDNS, and reverse DNS, servers, users and VLANs via the SCP REST API. The APIs use " +
 			"independent credentials; configure whichever you need.",
 		Attributes: map[string]provschema.Attribute{
 			"customer_number": provschema.StringAttribute{
@@ -88,7 +88,7 @@ func (p *netcupProvider) Schema(_ context.Context, _ fwprov.SchemaRequest, resp 
 				Optional:  true,
 				Sensitive: true,
 				MarkdownDescription: "SCP REST API offline refresh token (obtained once via the OIDC device flow). " +
-					"Required only for SCP resources/data sources (reverse DNS, servers, VLANs and actions). " +
+					"Required only for SCP resources/data sources (reverse DNS, servers, users, VLANs and actions). " +
 					"May also be set via `NETCUP_SCP_REFRESH_TOKEN`.",
 			},
 			"scp_base_url": provschema.StringAttribute{
@@ -165,6 +165,7 @@ func (p *netcupProvider) Resources(_ context.Context) []func() resource.Resource
 		NewServerSettingsResource,
 		NewServerInterfaceResource,
 		NewUserVlanResource,
+		NewUserResource,
 		NewServerIsoResource,
 		NewServerRescueSystemResource,
 		NewServerDiskDriverResource,
@@ -195,6 +196,8 @@ func (p *netcupProvider) DataSources(_ context.Context) []func() datasource.Data
 		NewServerImageFlavoursDataSource,
 		NewServerIsoImagesDataSource,
 		NewServerLogsDataSource,
+		NewUserDataSource,
+		NewUserLogsDataSource,
 		NewServerMetricsCPUDataSource,
 		NewServerMetricsDiskDataSource,
 		NewServerMetricsNetworkDataSource,

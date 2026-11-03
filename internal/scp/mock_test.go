@@ -645,3 +645,31 @@ func TestMockRescueSystem(t *testing.T) {
 		t.Fatalf("inactive: %v %+v", err, status)
 	}
 }
+
+func TestMockUpdateUserSendsPasswordOnce(t *testing.T) {
+	c, m := mockClient(t)
+	path := fmt.Sprintf("/api/v1/users/%d", mockapi.UserID)
+	m.FailNext(http.MethodPut, path, http.StatusServiceUnavailable, 1)
+	password := "NewSecret1"
+	if err := c.UpdateUser(context.Background(), UserSave{Language: "de", TimeZone: "Europe/Berlin", Password: &password}); err == nil {
+		t.Fatal("UpdateUser succeeded, want the injected failure")
+	}
+	puts := 0
+	for _, r := range m.Requests() {
+		if r.Method == http.MethodPut {
+			puts++
+		}
+	}
+	if puts != 1 {
+		t.Fatalf("PUTs = %d, want 1", puts)
+	}
+}
+
+func TestMockUpdateUserRetriesWithoutPassword(t *testing.T) {
+	c, m := mockClient(t)
+	path := fmt.Sprintf("/api/v1/users/%d", mockapi.UserID)
+	m.FailNext(http.MethodPut, path, http.StatusServiceUnavailable, 1)
+	if err := c.UpdateUser(context.Background(), UserSave{Language: "de", TimeZone: "Europe/Berlin"}); err != nil {
+		t.Fatalf("UpdateUser: %v", err)
+	}
+}
