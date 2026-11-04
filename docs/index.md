@@ -43,6 +43,7 @@ provider "netcup" {
 
 - `api_key` (String, Sensitive) netcup CCP API key. May also be set via `NETCUP_API_KEY`.
 - `api_password` (String, Sensitive) netcup CCP API password. May also be set via `NETCUP_API_PASSWORD`.
+- `ccp_endpoint` (String) JSON endpoint of the CCP API, by default `https://ccp.netcup.net/run/webservice/servers/endpoint.php?JSON`. May also be set via `NETCUP_CCP_ENDPOINT`.
 - `clouddns_api_key` (String, Sensitive) API key of the netcup API for domains on CloudDNS, from the CCP under Master Data > API. May also be set via `NETCUP_CLOUDDNS_API_KEY`.
 - `clouddns_base_url` (String) Host of the netcup API, by default `https://api.netcup.com`. May also be set via `NETCUP_CLOUDDNS_BASE_URL`.
 - `customer_number` (String) netcup customer number (CCP API). May also be set via `NETCUP_CUSTOMER_NUMBER`.

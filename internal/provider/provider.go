@@ -57,6 +57,7 @@ type netcupProviderModel struct {
 	SCPBaseURL      types.String `tfsdk:"scp_base_url"`
 	CloudDNSAPIKey  types.String `tfsdk:"clouddns_api_key"`
 	CloudDNSBaseURL types.String `tfsdk:"clouddns_base_url"`
+	CCPEndpoint     types.String `tfsdk:"ccp_endpoint"`
 }
 
 func (p *netcupProvider) Metadata(_ context.Context, _ fwprov.MetadataRequest, resp *fwprov.MetadataResponse) {
@@ -95,6 +96,10 @@ func (p *netcupProvider) Schema(_ context.Context, _ fwprov.SchemaRequest, resp 
 				Optional:            true,
 				MarkdownDescription: "SCP host, by default `" + scp.DefaultServer + "`. May also be set via `NETCUP_SCP_BASE_URL`.",
 			},
+			"ccp_endpoint": provschema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "JSON endpoint of the CCP API, by default `" + client.DefaultEndpoint + "`. May also be set via `NETCUP_CCP_ENDPOINT`.",
+			},
 			"clouddns_api_key": provschema.StringAttribute{
 				Optional:            true,
 				Sensitive:           true,
@@ -125,6 +130,7 @@ func (p *netcupProvider) Configure(ctx context.Context, req fwprov.ConfigureRequ
 			knownAttribute{"customer_number", cfg.CustomerNumber, "NETCUP_CUSTOMER_NUMBER"},
 			knownAttribute{"api_key", cfg.APIKey, "NETCUP_API_KEY"},
 			knownAttribute{"api_password", cfg.APIPassword, "NETCUP_API_PASSWORD"},
+			knownAttribute{"ccp_endpoint", cfg.CCPEndpoint, "NETCUP_CCP_ENDPOINT"},
 		),
 		unknownSCP: unknownAttribute(
 			knownAttribute{"scp_refresh_token", cfg.SCPRefreshTok, "NETCUP_SCP_REFRESH_TOKEN"},
@@ -137,6 +143,7 @@ func (p *netcupProvider) Configure(ctx context.Context, req fwprov.ConfigureRequ
 	}
 	if customer != "" && apiKey != "" && apiPassword != "" {
 		data.CCP = client.New(customer, apiKey, apiPassword)
+		data.CCP.Endpoint = firstNonEmpty(cfg.CCPEndpoint.ValueString(), os.Getenv("NETCUP_CCP_ENDPOINT"), client.DefaultEndpoint)
 	}
 	if scpToken != "" {
 		data.SCP = scp.NewForServer(firstNonEmpty(cfg.SCPBaseURL.ValueString(), os.Getenv("NETCUP_SCP_BASE_URL"), scp.DefaultServer), scpToken)

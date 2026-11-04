@@ -37,6 +37,7 @@ func testAccPreCheckCCP(t *testing.T) string {
 		}
 		t.Setenv(normal, value)
 	}
+	t.Setenv("NETCUP_CCP_ENDPOINT", "")
 	domain := os.Getenv("NETCUP_TEST_DOMAIN")
 	if domain == "" {
 		t.Skip("NETCUP_TEST_DOMAIN not set")
