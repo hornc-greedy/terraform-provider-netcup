@@ -111,6 +111,7 @@ The refresh token stays valid as long as it is used at least once every 30 days.
 | Failover IPs | `netcup_failover_ip_route` | `netcup_failover_ips` |  |  |
 | VLANs | `netcup_user_vlan` | `netcup_user_vlan`, `netcup_vlan`, `netcup_user_vlans` |  |  |
 | User and SSH keys | `netcup_user`, `netcup_ssh_key` | `netcup_user`, `netcup_user_logs`, `netcup_ssh_keys` |  |  |
+| Uploads | `netcup_user_image`, `netcup_user_iso` | `netcup_user_images`, `netcup_user_isos` | `netcup_user_image_download`, `netcup_user_iso_download` |  |
 | Tasks and maintenance |  | `netcup_tasks`, `netcup_maintenance` (deprecated, removed in 2.0.0) |  | `netcup_task_cancel` |
 
 ### Actions

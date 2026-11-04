@@ -70,6 +70,7 @@ type Server struct {
 
 type fault struct {
 	method, path string
+	prefix       bool
 	status       int
 	remaining    int
 }
@@ -113,6 +114,8 @@ func New(t testing.TB) *Server {
 	s := &Server{t: t, router: router, dnsRouter: dnsRouter, scpDoc: doc, scp: newSCPState(), dns: newCloudDNSState()}
 	s.handlers = s.scpHandlers()
 	maps.Copy(s.handlers, s.cloudDNSHandlers())
+	maps.Copy(s.handlers, s.objectHandlers("images"))
+	maps.Copy(s.handlers, s.objectHandlers("isos"))
 	srv := httptest.NewServer(s)
 	t.Cleanup(srv.Close)
 	s.URL = srv.URL
@@ -167,6 +170,13 @@ func (s *Server) FailNext(method, path string, status, times int) {
 	s.faults = append(s.faults, &fault{method: method, path: path, status: status, remaining: times})
 }
 
+// FailNextPrefix fails the next request below a path of unknown end.
+func (s *Server) FailNextPrefix(method, prefix string, status int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.faults = append(s.faults, &fault{method: method, path: prefix, prefix: true, status: status, remaining: 1})
+}
+
 // Requests returns the API requests received so far.
 func (s *Server) Requests() []Request {
 	s.mu.Lock()
@@ -177,7 +187,7 @@ func (s *Server) Requests() []Request {
 // activeFault returns the status of a matching fault and consumes one use.
 func (s *Server) activeFault(method, path string) (int, bool) {
 	for _, f := range s.faults {
-		if f.remaining > 0 && f.method == method && f.path == path {
+		if f.remaining > 0 && f.method == method && (f.path == path || f.prefix && strings.HasPrefix(path, f.path)) {
 			f.remaining--
 			return f.status, true
 		}
@@ -198,6 +208,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(r.URL.Path, "/v1/") {
 		s.serveCloudDNS(w, r, body)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, s3Prefix) {
+		s.serveS3(w, r, len(body))
 		return
 	}
 	if r.Header.Get("Authorization") != "Bearer "+accessToken {

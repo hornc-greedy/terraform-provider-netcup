@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -671,5 +673,140 @@ func TestMockUpdateUserRetriesWithoutPassword(t *testing.T) {
 	m.FailNext(http.MethodPut, path, http.StatusServiceUnavailable, 1)
 	if err := c.UpdateUser(context.Background(), UserSave{Language: "de", TimeZone: "Europe/Berlin"}); err != nil {
 		t.Fatalf("UpdateUser: %v", err)
+	}
+}
+
+func TestUploadPartSize(t *testing.T) {
+	for size, want := range map[int64]int64{0: minPartSize, minPartSize * maxUploadParts: minPartSize, minPartSize*maxUploadParts + 1: minPartSize + 1} {
+		if got := uploadPartSize(size); got != want {
+			t.Errorf("uploadPartSize(%d) = %d, want %d", size, got, want)
+		}
+	}
+}
+
+// testUploadFile creates a sparse file.
+func testUploadFile(t *testing.T, size int64) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "disk.img")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(size); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestMockUploadObjectInParts(t *testing.T) {
+	c, m := mockClient(t)
+	size := int64(minPartSize + 1)
+	if err := c.UploadObject(context.Background(), ObjectKindImages, "disk.img", testUploadFile(t, size)); err != nil {
+		t.Fatalf("UploadObject: %v", err)
+	}
+	if got, ok := m.Object("images", "disk.img"); !ok || got != size {
+		t.Fatalf("object size = %d, %v, want %d", got, ok, size)
+	}
+	var complete string
+	for _, r := range m.Requests() {
+		if r.Method == http.MethodPut {
+			complete = r.Body
+		}
+	}
+	if !strings.Contains(complete, `"partNumber":2`) {
+		t.Fatalf("complete body = %s, want two parts", complete)
+	}
+}
+
+// Assumption: netcup accepts a part without content.
+func TestMockUploadEmptyObject(t *testing.T) {
+	c, m := mockClient(t)
+	if err := c.UploadObject(context.Background(), ObjectKindIsos, "empty.iso", testUploadFile(t, 0)); err != nil {
+		t.Fatalf("UploadObject: %v", err)
+	}
+	if got, ok := m.Object("isos", "empty.iso"); !ok || got != 0 {
+		t.Fatalf("object size = %d, %v", got, ok)
+	}
+}
+
+func TestMockUploadObjectExactPart(t *testing.T) {
+	c, m := mockClient(t)
+	if err := c.UploadObject(context.Background(), ObjectKindImages, "disk.img", testUploadFile(t, minPartSize)); err != nil {
+		t.Fatalf("UploadObject: %v", err)
+	}
+	for _, r := range m.Requests() {
+		if r.Method == http.MethodPut && strings.Contains(r.Body, `"partNumber":2`) {
+			t.Fatalf("complete body = %s, want one part", r.Body)
+		}
+	}
+}
+
+func TestMockUploadObjectRetriesPart(t *testing.T) {
+	for name, status := range map[string]int{"5xx": http.StatusServiceUnavailable, "dropped connection": 0} {
+		t.Run(name, func(t *testing.T) {
+			c, m := mockClient(t)
+			m.FailParts(status, 1)
+			if err := c.UploadObject(context.Background(), ObjectKindIsos, "a.iso", testUploadFile(t, 1)); err != nil {
+				t.Fatalf("UploadObject: %v", err)
+			}
+			if got, ok := m.Object("isos", "a.iso"); !ok || got != 1 {
+				t.Fatalf("object size = %d, %v", got, ok)
+			}
+		})
+	}
+}
+
+func TestMockUploadObjectFailedPartKeepsTheURLSecret(t *testing.T) {
+	// One rejection is final, while a dropped connection is retried.
+	for name, tc := range map[string]struct {
+		status, times int
+		want          string
+	}{
+		"rejected":           {http.StatusForbidden, 1, "403 MockCode"},
+		"dropped connection": {0, maxAttempts, "EOF"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c, m := mockClient(t)
+			m.FailParts(tc.status, tc.times)
+			err := c.UploadObject(context.Background(), ObjectKindIsos, "a.iso", testUploadFile(t, 1))
+			if err == nil || !strings.Contains(err.Error(), tc.want) || strings.Contains(err.Error(), "signature") {
+				t.Fatalf("err = %v", err)
+			}
+			if _, ok := m.Object("isos", "a.iso"); ok {
+				t.Fatal("failed upload left an object")
+			}
+		})
+	}
+}
+
+func TestMockUploadCompletionOutlastsTheClientTimeout(t *testing.T) {
+	c, m := mockClient(t)
+	c.HTTPClient.Timeout = 2 * time.Second
+	m.DelayCompletion(3 * time.Second)
+	if err := c.UploadObject(context.Background(), ObjectKindIsos, "a.iso", testUploadFile(t, 1)); err != nil {
+		t.Fatalf("UploadObject: %v", err)
+	}
+}
+
+func TestMockUploadCompletionIsSentOnce(t *testing.T) {
+	c, m := mockClient(t)
+	path := fmt.Sprintf("/api/v1/users/%d/isos/a.iso/", mockapi.UserID)
+	m.FailNextPrefix(http.MethodPut, path, http.StatusServiceUnavailable)
+	if err := c.UploadObject(context.Background(), ObjectKindIsos, "a.iso", testUploadFile(t, 1)); err == nil {
+		t.Fatal("UploadObject succeeded, want the injected failure")
+	}
+}
+
+func TestMockUploadObjectMissingFile(t *testing.T) {
+	c, m := mockClient(t)
+	before := len(m.Requests())
+	if err := c.UploadObject(context.Background(), ObjectKindIsos, "a.iso", filepath.Join(t.TempDir(), "none")); err == nil {
+		t.Fatal("UploadObject succeeded")
+	}
+	if len(m.Requests()) != before {
+		t.Fatal("missing file reached the API")
 	}
 }

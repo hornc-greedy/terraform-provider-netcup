@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -140,6 +141,11 @@ type scpState struct {
 	tasks             map[string]*taskInfo
 	taskOverride      *taskInfo
 	user              user
+	objects           map[string]map[string]*mockObject
+	uploads           map[string]*mockUpload
+	partStatus        int
+	partFailures      int
+	completeDelay     time.Duration
 	gpuAvailable      bool
 	secondDiskDriver  string
 	diskDrivers       map[int]string
@@ -171,6 +177,8 @@ func newSCPState() *scpState {
 			ID: UserID, Username: "mock", Firstname: "Ada", Lastname: "Lovelace", Email: "ada@example.com",
 			Language: "en", TimeZone: &defaultTimeZone, ShowNickname: true,
 		},
+		objects:      map[string]map[string]*mockObject{"images": {}, "isos": {}},
+		uploads:      map[string]*mockUpload{},
 		attachedIso:  map[int]string{},
 		rescueActive: map[int]bool{},
 		isoBody:      map[int]string{},
@@ -288,7 +296,13 @@ func (s *Server) checkUser(c *call) {
 // undocumentedStatus reports whether netcup answers key with status although
 // the specification omits it.
 func undocumentedStatus(key string, status int) bool {
-	return key == "GET "+pathPolicy && status == http.StatusNotFound
+	switch status {
+	case http.StatusNotFound:
+		return key == "GET "+pathPolicy
+	case http.StatusBadRequest:
+		return key == "POST "+pathUser+"/images/{key}" || key == "POST "+pathUser+"/isos/{key}"
+	}
+	return false
 }
 
 func (s *Server) scpHandlers() map[string]handler {

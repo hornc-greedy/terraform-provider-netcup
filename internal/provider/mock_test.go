@@ -3,9 +3,12 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
@@ -17,12 +20,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/echoprovider"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/mockapi"
+	"github.com/hornc-greedy/terraform-provider-netcup/internal/scp"
 )
 
 // testMockConfig prepends the provider block that points at the mock.
@@ -2011,6 +2016,204 @@ data "netcup_user_logs" "test" {
 			),
 		}},
 	})
+}
+
+func testMockObjectConfig(m *mockapi.Server, typeName, source, hash string) string {
+	hashLine := ""
+	if hash != "" {
+		hashLine = fmt.Sprintf("source_hash = %q", hash)
+	}
+	return testMockConfig(m, fmt.Sprintf(`
+resource %q "test" {
+  key    = "disk #1?.img"
+  source = %q
+  %s
+}
+`, typeName, source, hashLine))
+}
+
+func testMockObjectFile(t *testing.T, name, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func testMockObjectLifecycle(t *testing.T, kind, typeName, dataSource string) {
+	t.Helper()
+	m := mockapi.New(t)
+	address := typeName + ".test"
+	small := testMockObjectFile(t, "small", "12345")
+	big := testMockObjectFile(t, "big", "1234567890")
+	bigElsewhere := testMockObjectFile(t, "elsewhere", "this content must not reach netcup")
+	const key = "disk #1?.img"
+	size := func(want string) resource.TestCheckFunc {
+		return resource.TestCheckResourceAttr(address, "size_in_b", want)
+	}
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy: func(*terraform.State) error {
+			if _, ok := m.Object(kind, key); ok {
+				return fmt.Errorf("object survived the destroy")
+			}
+			return nil
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: testMockObjectConfig(m, typeName, small, "a"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(address, "id", key),
+					size("5"),
+					resource.TestCheckResourceAttr(address, "type", "MANUAL"),
+					resource.TestCheckResourceAttrSet(address, "last_modified"),
+				),
+			},
+			{
+				ResourceName:            address,
+				ImportState:             true,
+				ImportStateId:           key,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"source", "source_hash", "timeouts"},
+			},
+			{
+				Config: testMockObjectConfig(m, typeName, big, "b"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionDestroyBeforeCreate)},
+				},
+				Check: size("10"),
+			},
+			{
+				// A new path with the same hash uploads nothing.
+				Config: testMockObjectConfig(m, typeName, bigElsewhere, "b"),
+				Check:  size("10"),
+			},
+			{
+				// Without a hash nothing tells of a change.
+				Config: testMockObjectConfig(m, typeName, small, ""),
+				Check:  size("10"),
+			},
+			{
+				Config: testMockObjectConfig(m, typeName, small, "c"),
+				Check:  size("5"),
+			},
+			{
+				// The replacement deletes the object first, so a failed upload leaves none
+				// and the next apply uploads again.
+				PreConfig:   func() { m.FailParts(http.StatusForbidden, 1) },
+				Config:      testMockObjectConfig(m, typeName, big, "d"),
+				ExpectError: regexp.MustCompile("Error uploading"),
+			},
+			{
+				Config: testMockObjectConfig(m, typeName, big, "d"),
+				Check:  size("10"),
+			},
+			{
+				PreConfig: func() { m.RemoveObject(kind, key) },
+				Config:    testMockObjectConfig(m, typeName, small, ""),
+				Check:     size("5"),
+			},
+			{
+				Config: testMockObjectConfig(m, typeName, small, "") + fmt.Sprintf(`
+data %q "test" {
+  depends_on = [%s]
+}
+`, dataSource, address),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("data."+dataSource+".test", "objects.#", "1"),
+					resource.TestCheckResourceAttr("data."+dataSource+".test", "objects.0.key", key),
+					resource.TestCheckResourceAttr("data."+dataSource+".test", "objects.0.size_in_b", "5"),
+					resource.TestCheckResourceAttr("data."+dataSource+".test", "objects.0.type", "MANUAL"),
+				),
+			},
+		},
+	})
+}
+
+func TestMockUserImage(t *testing.T) {
+	testMockObjectLifecycle(t, "images", "netcup_user_image", "netcup_user_images")
+}
+
+func TestMockUserIso(t *testing.T) {
+	testMockObjectLifecycle(t, "isos", "netcup_user_iso", "netcup_user_isos")
+}
+
+// netcup refuses an upload to an existing key, so the provider never overwrites
+// an object it does not manage.
+func TestMockUserObjectExistingKeyFails(t *testing.T) {
+	m := mockapi.New(t)
+	source := testMockObjectFile(t, "file", "1")
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{{
+			PreConfig: func() {
+				client := scp.NewForServer(m.URL, mockapi.RefreshToken)
+				if err := client.UploadObject(context.Background(), scp.ObjectKindIsos, "disk #1?.img", source); err != nil {
+					t.Fatal(err)
+				}
+			},
+			Config:      testMockObjectConfig(m, "netcup_user_iso", source, ""),
+			ExpectError: regexp.MustCompile("already exists"),
+		}},
+	})
+}
+
+func TestMockUserObjectMissingFileFailsTheApply(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{{
+			Config:      testMockObjectConfig(m, "netcup_user_iso", filepath.Join(t.TempDir(), "none"), ""),
+			ExpectError: regexp.MustCompile("Error uploading ISO"),
+		}},
+	})
+}
+
+func testMockObjectDownload(t *testing.T, kind, typeName string) {
+	t.Helper()
+	m := mockapi.New(t)
+	source := testMockObjectFile(t, "file", "1")
+	resource.Test(t, resource.TestCase{
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_10_0)},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
+			"netcup": testAccProtoV6ProviderFactories["netcup"],
+			"echo":   echoprovider.NewProviderServer(),
+		},
+		Steps: []resource.TestStep{{
+			PreConfig: func() {
+				client := scp.NewForServer(m.URL, mockapi.RefreshToken)
+				if err := client.UploadObject(context.Background(), scp.ObjectKind(kind), "file.bin", source); err != nil {
+					t.Fatal(err)
+				}
+			},
+			Config: testMockConfig(m, fmt.Sprintf(`
+ephemeral %[1]q "test" {
+  key = "file.bin"
+}
+
+provider "echo" {
+  data = ephemeral.%[1]s.test
+}
+
+resource "echo" "test" {}
+`, typeName)),
+			ConfigStateChecks: []statecheck.StateCheck{
+				statecheck.ExpectKnownValue("echo.test", tfjsonpath.New("data").AtMapKey("filename"), knownvalue.StringExact("file.bin")),
+				statecheck.ExpectKnownValue("echo.test", tfjsonpath.New("data").AtMapKey("presigned_url"), knownvalue.StringRegexp(regexp.MustCompile("signature=mock"))),
+				statecheck.ExpectKnownValue("echo.test", tfjsonpath.New("data").AtMapKey("presigned_url_validity_duration_in_hours"), knownvalue.Int64Exact(1)),
+				statecheck.ExpectKnownValue("echo.test", tfjsonpath.New("data").AtMapKey("headers").AtMapKey("x-amz-te"), knownvalue.ListExact([]knownvalue.Check{knownvalue.StringExact("trailers")})),
+			},
+		}},
+	})
+}
+
+func TestMockUserImageDownload(t *testing.T) {
+	testMockObjectDownload(t, "images", "netcup_user_image_download")
+}
+
+func TestMockUserIsoDownload(t *testing.T) {
+	testMockObjectDownload(t, "isos", "netcup_user_iso_download")
 }
 
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {

@@ -192,6 +192,9 @@ func (c *Client) exchange(ctx context.Context, method, target, contentType strin
 // method.
 type sendOnceKey struct{}
 
+// noClientTimeoutKey marks a context that alone bounds its requests.
+type noClientTimeoutKey struct{}
+
 // retryable reports whether sending the request again has no further effect.
 func retryable(method string, status int, err error) bool {
 	idempotent := method == http.MethodGet || method == http.MethodPut || method == http.MethodDelete
@@ -218,7 +221,11 @@ func (c *Client) request(ctx context.Context, method, target, contentType, token
 		req.Header.Set("Content-Type", contentType)
 	}
 
-	res, err := c.HTTPClient.Do(req)
+	client := *c.HTTPClient
+	if ctx.Value(noClientTimeoutKey{}) != nil {
+		client.Timeout = 0
+	}
+	res, err := client.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}
