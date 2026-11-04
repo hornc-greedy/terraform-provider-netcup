@@ -83,7 +83,8 @@ func (c *Client) CreateDNSRecord(ctx context.Context, domain string, rec DNSReco
 		return nil, err
 	}
 	for i := range after {
-		if !had[after[i].ID] {
+		r := after[i]
+		if !had[r.ID] && r.Hostname == rec.Hostname && r.Type == rec.Type && r.Destination == rec.Destination {
 			return &after[i], nil
 		}
 	}
