@@ -20,6 +20,6 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string {
-	return fmt.Sprintf("netcup %s failed (status %d): %s — %s",
+	return fmt.Sprintf("netcup %s failed (status %d): %s: %s",
 		e.Action, e.StatusCode, e.ShortMessage, e.LongMessage)
 }

@@ -3,12 +3,12 @@
 page_title: "netcup_dns_zone Resource - netcup"
 subcategory: ""
 description: |-
-  Zone-level DNS settings (TTL / SOA) of an existing netcup zone. The zone itself is never created or deleted by this resource — destroy only drops it from state.
+  Zone-level DNS settings (TTL / SOA) of an existing netcup zone. The zone itself is never created or deleted by this resource, destroy only drops it from state.
 ---
 
 # netcup_dns_zone (Resource)
 
-Zone-level DNS settings (TTL / SOA) of an existing netcup zone. The zone itself is never created or deleted by this resource — `destroy` only drops it from state.
+Zone-level DNS settings (TTL / SOA) of an existing netcup zone. The zone itself is never created or deleted by this resource, `destroy` only drops it from state.
 
 ## Example Usage
 

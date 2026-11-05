@@ -52,7 +52,7 @@ func (r *dnsZoneResource) Metadata(_ context.Context, req resource.MetadataReque
 func (r *dnsZoneResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Zone-level DNS settings (TTL / SOA) of an existing netcup zone. " +
-			"The zone itself is never created or deleted by this resource — `destroy` only drops it from state.",
+			"The zone itself is never created or deleted by this resource, `destroy` only drops it from state.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -207,7 +207,7 @@ func (r *dnsZoneResource) Delete(_ context.Context, _ resource.DeleteRequest, re
 	// netcup has no API to delete a zone; it lives as long as the domain does.
 	resp.Diagnostics.AddWarning(
 		"Zone left untouched",
-		"netcup_dns_zone only manages settings of an existing zone — the zone itself was not deleted.",
+		"netcup_dns_zone only manages settings of an existing zone, the zone itself was not deleted.",
 	)
 }
 

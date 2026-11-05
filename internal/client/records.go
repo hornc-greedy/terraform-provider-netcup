@@ -60,7 +60,7 @@ func (c *Client) UpdateDNSRecords(ctx context.Context, domain string, recs []DNS
 
 // CreateDNSRecord adds a single record and resolves its server-assigned id.
 // netcup's response returns the whole zone, so the new id is determined by
-// snapshotting the ids before the write — the per-zone lock makes that atomic.
+// snapshotting the ids before the write, the per-zone lock makes that atomic.
 func (c *Client) CreateDNSRecord(ctx context.Context, domain string, rec DNSRecord) (*DNSRecord, error) {
 	rec.ID = ""
 	unlock := c.zoneLock(domain)
