@@ -176,7 +176,8 @@ generated from the schema descriptions and `examples/` with
 
 Acceptance tests run against a mock of the netcup APIs in `internal/mockapi`. It
 keeps state, checks SCP and netcup API requests and responses against the OpenAPI
-specifications in `internal/mockapi/spec` and needs no credentials.
+specifications in `internal/mockapi/spec`, checks CCP requests against the CCP
+function list and needs no credentials.
 
 ```shell
 make testmock

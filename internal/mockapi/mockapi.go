@@ -66,6 +66,7 @@ type Server struct {
 	faults   []*fault
 	scp      *scpState
 	dns      *cloudDNSState
+	ccp      *ccpState
 }
 
 type fault struct {
@@ -111,7 +112,7 @@ func New(t testing.TB) *Server {
 	if err != nil {
 		t.Fatalf("route netcup specification: %v", err)
 	}
-	s := &Server{t: t, router: router, dnsRouter: dnsRouter, scpDoc: doc, scp: newSCPState(), dns: newCloudDNSState()}
+	s := &Server{t: t, router: router, dnsRouter: dnsRouter, scpDoc: doc, scp: newSCPState(), ccp: newCCPState(), dns: newCloudDNSState()}
 	s.handlers = s.scpHandlers()
 	maps.Copy(s.handlers, s.cloudDNSHandlers())
 	maps.Copy(s.handlers, s.objectHandlers("images"))
@@ -208,6 +209,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(r.URL.Path, "/v1/") {
 		s.serveCloudDNS(w, r, body)
+		return
+	}
+	if r.URL.Path == CCPPath {
+		s.serveCCP(w, r, body)
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, s3Prefix) {

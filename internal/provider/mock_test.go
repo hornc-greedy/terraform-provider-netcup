@@ -2216,6 +2216,194 @@ func TestMockUserIsoDownload(t *testing.T) {
 	testMockObjectDownload(t, "isos", "netcup_user_iso_download")
 }
 
+func testMockCCPConfig(m *mockapi.Server, password, config string) string {
+	return fmt.Sprintf(`
+provider "netcup" {
+  customer_number = %q
+  api_key         = %q
+  api_password    = %q
+  ccp_endpoint    = %q
+}
+`, mockapi.CCPCustomer, mockapi.CCPKey, password, m.URL+mockapi.CCPPath+"?JSON") + config
+}
+
+func testMockDNSRecord(hostname, kind, priority, destination string) string {
+	priorityLine := ""
+	if priority != "" {
+		priorityLine = fmt.Sprintf("priority    = %q", priority)
+	}
+	return fmt.Sprintf(`
+resource "netcup_dns_record" "test" {
+  domain      = %q
+  hostname    = %q
+  type        = %q
+  %s
+  destination = %q
+}
+`, mockapi.CCPDomain, hostname, kind, priorityLine, destination)
+}
+
+func TestMockDNSRecord(t *testing.T) {
+	m := mockapi.New(t)
+	address := "netcup_dns_record.test"
+	var id string
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy: func(*terraform.State) error {
+			if n := m.CCPRecordCount(); n != 0 {
+				return fmt.Errorf("%d records survived the destroy", n)
+			}
+			return nil
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: testMockCCPConfig(m, mockapi.CCPPassword, testMockDNSRecord("@", "MX", "10", "mail.example.com")),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(address, "hostname", "@"),
+					resource.TestCheckResourceAttr(address, "priority", "10"),
+					resource.TestCheckResourceAttrSet(address, "id"),
+					func(s *terraform.State) error {
+						id = s.RootModule().Resources[address].Primary.ID
+						return nil
+					},
+				),
+			},
+			{
+				ResourceName:      address,
+				ImportState:       true,
+				ImportStateIdFunc: func(*terraform.State) (string, error) { return mockapi.CCPDomain + ":" + id, nil },
+				ImportStateVerify: true,
+			},
+			{
+				Config: testMockCCPConfig(m, mockapi.CCPPassword, testMockDNSRecord("@", "MX", "20", "mail2.example.com")),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(address, "priority", "20"),
+					resource.TestCheckResourceAttr(address, "destination", "mail2.example.com"),
+					func(s *terraform.State) error {
+						if got := s.RootModule().Resources[address].Primary.ID; got != id {
+							return fmt.Errorf("id changed from %s to %s", id, got)
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
+func TestMockDNSRecordRemovedOutsideOfTerraform(t *testing.T) {
+	m := mockapi.New(t)
+	config := testMockCCPConfig(m, mockapi.CCPPassword, testMockDNSRecord("www", "A", "", "192.0.2.1"))
+	var id string
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: func(s *terraform.State) error {
+					id = s.RootModule().Resources["netcup_dns_record.test"].Primary.ID
+					return nil
+				},
+			},
+			{
+				PreConfig: func() { m.RemoveCCPRecord(id) },
+				Config:    config,
+				Check: func(s *terraform.State) error {
+					got := s.RootModule().Resources["netcup_dns_record.test"].Primary.ID
+					if got == id || m.CCPRecordCount() != 1 {
+						return fmt.Errorf("id %s, was %s, %d records", got, id, m.CCPRecordCount())
+					}
+					return nil
+				},
+			},
+		},
+	})
+}
+
+func TestMockDNSZone(t *testing.T) {
+	m := mockapi.New(t)
+	config := func(ttl int) string {
+		return testMockCCPConfig(m, mockapi.CCPPassword, fmt.Sprintf(`
+resource "netcup_dns_zone" "test" {
+  domain  = %q
+  ttl     = %d
+  refresh = 28800
+  retry   = 7200
+  expire  = 1209600
+}
+`, mockapi.CCPDomain, ttl))
+	}
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: config(3600),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("netcup_dns_zone.test", "ttl", "3600"),
+					resource.TestCheckResourceAttr("netcup_dns_zone.test", "dnssec_status", "false"),
+					resource.TestCheckResourceAttrSet("netcup_dns_zone.test", "serial"),
+				),
+			},
+			{
+				ResourceName:      "netcup_dns_zone.test",
+				ImportState:       true,
+				ImportStateId:     mockapi.CCPDomain,
+				ImportStateVerify: true,
+			},
+			{
+				Config: config(7200),
+				Check:  resource.TestCheckResourceAttr("netcup_dns_zone.test", "ttl", "7200"),
+			},
+		},
+	})
+}
+
+func TestMockDNSRecordsDataSource(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{{
+			Config: testMockCCPConfig(m, mockapi.CCPPassword, testMockDNSRecord("www", "A", "", "192.0.2.1")+fmt.Sprintf(`
+data "netcup_dns_records" "test" {
+  domain     = %q
+  depends_on = [netcup_dns_record.test]
+}
+`, mockapi.CCPDomain)),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr("data.netcup_dns_records.test", "records.#", "1"),
+				resource.TestCheckResourceAttr("data.netcup_dns_records.test", "records.0.hostname", "www"),
+				resource.TestCheckResourceAttr("data.netcup_dns_records.test", "records.0.destination", "192.0.2.1"),
+			),
+		}},
+	})
+}
+
+func TestMockDNSRecordsDataSourceOfEmptyZone(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{{
+			Config: testMockCCPConfig(m, mockapi.CCPPassword, fmt.Sprintf(`
+data "netcup_dns_records" "test" {
+  domain = %q
+}
+`, mockapi.CCPDomain)),
+			Check: resource.TestCheckResourceAttr("data.netcup_dns_records.test", "records.#", "0"),
+		}},
+	})
+}
+
+func TestMockCCPWrongPasswordFails(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{{
+			Config:      testMockCCPConfig(m, "wrong", testMockDNSRecord("www", "A", "", "192.0.2.1")),
+			ExpectError: regexp.MustCompile("Validation Error"),
+		}},
+	})
+}
+
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {
 	for attribute, object := range map[string]string{
 		"scp_refresh_token": `data "netcup_servers" "test" {}`,
