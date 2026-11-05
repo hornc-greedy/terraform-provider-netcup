@@ -114,6 +114,9 @@ The refresh token stays valid as long as it is used at least once every 30 days.
 | Uploads | `netcup_user_image`, `netcup_user_iso` | `netcup_user_images`, `netcup_user_isos` | `netcup_user_image_download`, `netcup_user_iso_download` |  |
 | Tasks and maintenance |  | `netcup_tasks`, `netcup_maintenance` (deprecated, removed in 2.0.0) |  | `netcup_task_cancel` |
 
+The [API coverage guide](docs/guides/api-coverage.md) maps every API operation to
+its object and names how it was tested.
+
 ### Actions
 
 One-off operations are [Terraform actions](https://developer.hashicorp.com/terraform/language/invoke-actions)

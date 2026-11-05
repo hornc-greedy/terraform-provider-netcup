@@ -1,0 +1,141 @@
+---
+page_title: "API coverage"
+subcategory: ""
+description: |-
+  Which netcup API operation each provider object uses.
+---
+
+# API coverage
+
+The test suite runs real Terraform against a mock API that implements every
+operation below. It checks each request and response against netcup's OpenAPI
+specifications, and CCP requests against the CCP function list. The repository
+also has live tests against the real API, see the README. They need credentials
+and do not run by default.
+
+## CCP API
+
+| Function | Object |
+|---|---|
+| `login` | all CCP objects |
+| `logout` | client only, the provider lets sessions expire |
+| `infoDnsRecords` | `netcup_dns_record`, `netcup_dns_records` |
+| `updateDnsRecords` | `netcup_dns_record` |
+| `infoDnsZone`, `updateDnsZone` | `netcup_dns_zone` |
+
+The other CCP functions (domains, handles, poll, prices) are not part of this
+provider.
+
+## SCP and netcup API
+
+| Operation | Object |
+|---|---|
+| `GET /api/v1/maintenance` | `netcup_maintenance` |
+| `POST /api/v1/rdns/ipv4` | `netcup_reverse_dns` |
+| `GET /api/v1/rdns/ipv4/{ip}` | `netcup_reverse_dns` |
+| `DELETE /api/v1/rdns/ipv4/{ip}` | `netcup_reverse_dns` |
+| `POST /api/v1/rdns/ipv6` | `netcup_reverse_dns` |
+| `GET /api/v1/rdns/ipv6/{ip}` | `netcup_reverse_dns` |
+| `DELETE /api/v1/rdns/ipv6/{ip}` | `netcup_reverse_dns` |
+| `GET /api/v1/servers` | `netcup_servers` |
+| `GET /api/v1/servers/{serverId}` | `netcup_server`, `netcup_server_settings` |
+| `PATCH /api/v1/servers/{serverId}` | `netcup_server_settings`, `netcup_server_state`, `netcup_server_rescue_system` |
+| `GET /api/v1/servers/{serverId}/disks` | `netcup_server_disks` |
+| `PATCH /api/v1/servers/{serverId}/disks` | `netcup_server_disk_driver` |
+| `GET /api/v1/servers/{serverId}/disks/supported-drivers` | `netcup_server_disk_supported_drivers` |
+| `GET /api/v1/servers/{serverId}/disks/{diskName}` | `netcup_server_disk` |
+| `POST /api/v1/servers/{serverId}/disks/{diskName}:format` | `netcup_server_disk_format` |
+| `GET /api/v1/servers/{serverId}/gpu-driver` | `netcup_server_gpu_driver` (ephemeral) |
+| `GET /api/v1/servers/{serverId}/guest-agent` | `netcup_server_guest_agent` |
+| `GET /api/v1/servers/{serverId}/guest-agent/status` | `netcup_server_guest_agent_status` |
+| `POST /api/v1/servers/{serverId}/image` | `netcup_server_image_setup` |
+| `GET /api/v1/servers/{serverId}/imageflavours` | `netcup_server_image_flavours` |
+| `GET /api/v1/servers/{serverId}/interfaces` | `netcup_server_interfaces` |
+| `POST /api/v1/servers/{serverId}/interfaces` | `netcup_server_interface` |
+| `GET /api/v1/servers/{serverId}/interfaces/{mac}` | `netcup_server_interface` |
+| `PUT /api/v1/servers/{serverId}/interfaces/{mac}` | `netcup_server_interface` |
+| `DELETE /api/v1/servers/{serverId}/interfaces/{mac}` | `netcup_server_interface` |
+| `GET /api/v1/servers/{serverId}/interfaces/{mac}/firewall` | `netcup_server_firewall` |
+| `PUT /api/v1/servers/{serverId}/interfaces/{mac}/firewall` | `netcup_server_firewall` |
+| `POST /api/v1/servers/{serverId}/interfaces/{mac}/firewall:reapply` | `netcup_server_firewall_reapply` |
+| `POST /api/v1/servers/{serverId}/interfaces/{mac}/firewall:restore-copied-policies` | `netcup_server_firewall_restore_copied_policies` |
+| `GET /api/v1/servers/{serverId}/iso` | `netcup_server_iso` |
+| `POST /api/v1/servers/{serverId}/iso` | `netcup_server_iso` |
+| `DELETE /api/v1/servers/{serverId}/iso` | `netcup_server_iso` |
+| `GET /api/v1/servers/{serverId}/isoimages` | `netcup_server_iso_images` |
+| `GET /api/v1/servers/{serverId}/logs` | `netcup_server_logs` |
+| `GET /api/v1/servers/{serverId}/metrics/cpu` | `netcup_server_metrics_cpu` |
+| `GET /api/v1/servers/{serverId}/metrics/disk` | `netcup_server_metrics_disk` |
+| `GET /api/v1/servers/{serverId}/metrics/network` | `netcup_server_metrics_network` |
+| `GET /api/v1/servers/{serverId}/metrics/network/packet` | `netcup_server_metrics_network_packet` |
+| `GET /api/v1/servers/{serverId}/rescuesystem` | `netcup_server_rescue_system` |
+| `POST /api/v1/servers/{serverId}/rescuesystem` | `netcup_server_rescue_system` |
+| `DELETE /api/v1/servers/{serverId}/rescuesystem` | `netcup_server_rescue_system` |
+| `GET /api/v1/servers/{serverId}/snapshots` | `netcup_server_snapshots` |
+| `POST /api/v1/servers/{serverId}/snapshots` | `netcup_server_snapshot` |
+| `GET /api/v1/servers/{serverId}/snapshots/{name}` | `netcup_server_snapshot` |
+| `DELETE /api/v1/servers/{serverId}/snapshots/{name}` | `netcup_server_snapshot` |
+| `POST /api/v1/servers/{serverId}/snapshots/{name}/export` | `netcup_server_snapshot_export` |
+| `POST /api/v1/servers/{serverId}/snapshots/{name}/revert` | `netcup_server_snapshot_revert` |
+| `POST /api/v1/servers/{serverId}/snapshots:dryrun` | `netcup_server_snapshot_dryrun` |
+| `POST /api/v1/servers/{serverId}/storageoptimization` | `netcup_server_storage_optimization` |
+| `POST /api/v1/servers/{serverId}/user-image` | `netcup_server_user_image_setup` |
+| `GET /api/v1/tasks` | `netcup_tasks` |
+| `GET /api/v1/tasks/{uuid}` | internal task polling |
+| `PUT /api/v1/tasks/{uuid}:cancel` | `netcup_task_cancel` |
+| `GET /api/v1/users/{userId}` | `netcup_user` |
+| `PUT /api/v1/users/{userId}` | `netcup_user` |
+| `GET /api/v1/users/{userId}/failoverips/v4` | `netcup_failover_ip_route`, `netcup_failover_ips` |
+| `PATCH /api/v1/users/{userId}/failoverips/v4/{id}` | `netcup_failover_ip_route` |
+| `GET /api/v1/users/{userId}/failoverips/v6` | `netcup_failover_ip_route`, `netcup_failover_ips` |
+| `PATCH /api/v1/users/{userId}/failoverips/v6/{id}` | `netcup_failover_ip_route` |
+| `GET /api/v1/users/{userId}/firewall-policies` | `netcup_firewall_policy`, `netcup_firewall_policies` |
+| `POST /api/v1/users/{userId}/firewall-policies` | `netcup_firewall_policy` |
+| `GET /api/v1/users/{userId}/firewall-policies/{id}` | `netcup_firewall_policy`, `netcup_firewall_policies` |
+| `PUT /api/v1/users/{userId}/firewall-policies/{id}` | `netcup_firewall_policy` |
+| `DELETE /api/v1/users/{userId}/firewall-policies/{id}` | `netcup_firewall_policy` |
+| `GET /api/v1/users/{userId}/images` | `netcup_user_images` |
+| `GET /api/v1/users/{userId}/images/{key}` | `netcup_user_image_download` |
+| `POST /api/v1/users/{userId}/images/{key}` | `netcup_user_image` |
+| `DELETE /api/v1/users/{userId}/images/{key}` | `netcup_user_image` |
+| `PUT /api/v1/users/{userId}/images/{key}/{uploadId}` | `netcup_user_image` |
+| `GET /api/v1/users/{userId}/images/{key}/{uploadId}/parts/{partNumber}` | `netcup_user_image` |
+| `GET /api/v1/users/{userId}/isos` | `netcup_user_isos` |
+| `GET /api/v1/users/{userId}/isos/{key}` | `netcup_user_iso_download` |
+| `POST /api/v1/users/{userId}/isos/{key}` | `netcup_user_iso` |
+| `DELETE /api/v1/users/{userId}/isos/{key}` | `netcup_user_iso` |
+| `PUT /api/v1/users/{userId}/isos/{key}/{uploadId}` | `netcup_user_iso` |
+| `GET /api/v1/users/{userId}/isos/{key}/{uploadId}/parts/{partNumber}` | `netcup_user_iso` |
+| `GET /api/v1/users/{userId}/logs` | `netcup_user_logs` |
+| `GET /api/v1/users/{userId}/ssh-keys` | `netcup_ssh_key`, `netcup_ssh_keys` |
+| `POST /api/v1/users/{userId}/ssh-keys` | `netcup_ssh_key` |
+| `DELETE /api/v1/users/{userId}/ssh-keys/{id}` | `netcup_ssh_key` |
+| `GET /api/v1/users/{userId}/vlans` | `netcup_user_vlans` |
+| `GET /api/v1/users/{userId}/vlans/{vlanId}` | `netcup_user_vlan` |
+| `PUT /api/v1/users/{userId}/vlans/{vlanId}` | `netcup_user_vlan` |
+| `GET /api/v1/vlans/{vlanId}` | `netcup_vlan` |
+| `GET /v1/dns/recordType` | `netcup_clouddns_record_types` |
+| `GET /v1/domain` | `netcup_clouddns_domain`, `netcup_clouddns_domains` |
+| `GET /v1/domain/{domainId}/acme/challenge` | `netcup_clouddns_acme_challenges` |
+| `POST /v1/domain/{domainId}/acme/challenge` | `netcup_clouddns_acme_challenge` |
+| `GET /v1/domain/{domainId}/acme/challenge/{scope}/{value}` | `netcup_clouddns_acme_challenge` |
+| `DELETE /v1/domain/{domainId}/acme/challenge/{scope}/{value}` | `netcup_clouddns_acme_challenge` |
+| `POST /v1/domain/{domainId}/changeset` | `netcup_clouddns_record` |
+| `GET /v1/domain/{domainId}/dns/revision` | `netcup_clouddns_revisions`, `netcup_clouddns_revision`, `netcup_clouddns_record`, `netcup_clouddns_records` |
+| `GET /v1/domain/{domainId}/dns/revision/{revisionId}` | `netcup_clouddns_revision` |
+| `GET /v1/domain/{domainId}/dns/revision/{revisionId}/record` | `netcup_clouddns_records`, `netcup_clouddns_record` |
+| `GET /v1/domain/{domainId}/dns/revision/{revisionId}/record/{recordId}` | `netcup_clouddns_record` |
+
+## Not mapped
+
+These operations manage nothing, or form a draft workflow that a single record resource does not use:
+
+- `GET /api/ping`
+- `GET /api/v1/openapi`
+- `POST /api/v1/openapi/mcp`
+- `POST /v1/domain/{domainId}/dns/revision`
+- `DELETE /v1/domain/{domainId}/dns/revision/{revisionId}`
+- `POST /v1/domain/{domainId}/dns/revision/{revisionId}/changeset`
+- `POST /v1/domain/{domainId}/dns/revision/{revisionId}/commit`
+- `POST /v1/domain/{domainId}/dns/revision/{revisionId}/record`
+- `DELETE /v1/domain/{domainId}/dns/revision/{revisionId}/record/{recordId}`
