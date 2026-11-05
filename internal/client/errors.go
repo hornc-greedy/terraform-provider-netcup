@@ -4,6 +4,11 @@ package client
 
 import "fmt"
 
+// Status codes netcup returns without documenting them.
+const (
+	statusSessionInvalid = 4001
+)
+
 // APIError is returned whenever the CCP envelope reports status != "success".
 type APIError struct {
 	Action       string

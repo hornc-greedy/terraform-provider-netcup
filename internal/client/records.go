@@ -10,15 +10,7 @@ import (
 
 // InfoDNSRecords returns all records of a zone. Reads need no zone lock.
 func (c *Client) InfoDNSRecords(ctx context.Context, domain string) ([]DNSRecord, error) {
-	if err := c.ensureSession(ctx); err != nil {
-		return nil, err
-	}
-	raw, err := c.do(ctx, "infoDnsRecords", map[string]any{
-		"domainname":     domain,
-		"customernumber": c.CustomerNumber,
-		"apikey":         c.APIKey,
-		"apisessionid":   c.session(),
-	})
+	raw, err := c.sessionCall(ctx, "infoDnsRecords", map[string]any{"domainname": domain})
 	if err != nil {
 		return nil, err
 	}
@@ -33,15 +25,9 @@ func (c *Client) InfoDNSRecords(ctx context.Context, domain string) ([]DNSRecord
 // It does NOT take the zone lock; callers that need atomic read-modify-write
 // (e.g. CreateDNSRecord) hold the lock around several calls themselves.
 func (c *Client) updateDNSRecordsRaw(ctx context.Context, domain string, recs []DNSRecord) ([]DNSRecord, error) {
-	if err := c.ensureSession(ctx); err != nil {
-		return nil, err
-	}
-	raw, err := c.do(ctx, "updateDnsRecords", map[string]any{
-		"domainname":     domain,
-		"customernumber": c.CustomerNumber,
-		"apikey":         c.APIKey,
-		"apisessionid":   c.session(),
-		"dnsrecordset":   dnsRecordSet{DNSRecords: recs},
+	raw, err := c.sessionCall(ctx, "updateDnsRecords", map[string]any{
+		"domainname":   domain,
+		"dnsrecordset": dnsRecordSet{DNSRecords: recs},
 	})
 	if err != nil {
 		return nil, err

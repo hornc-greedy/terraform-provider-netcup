@@ -39,10 +39,11 @@ func TestLogin(t *testing.T) {
 		}
 		return loginOK
 	})
-	if err := c.ensureSession(context.Background()); err != nil {
+	session, err := c.ensureSession(context.Background())
+	if err != nil {
 		t.Fatalf("ensureSession: %v", err)
 	}
-	if got := c.session(); got != "SID" {
+	if got := session; got != "SID" {
 		t.Fatalf("session = %q, want SID", got)
 	}
 }
@@ -55,7 +56,7 @@ func TestSessionRenewedAfterIdleLimit(t *testing.T) {
 	})
 	ctx := context.Background()
 	for range 2 {
-		if err := c.ensureSession(ctx); err != nil {
+		if _, err := c.ensureSession(ctx); err != nil {
 			t.Fatalf("ensureSession: %v", err)
 		}
 	}
@@ -63,7 +64,7 @@ func TestSessionRenewedAfterIdleLimit(t *testing.T) {
 		t.Fatalf("logins = %d, want 1 while the session is in use", logins)
 	}
 	c.sessionUsed = time.Now().Add(-sessionMaxIdle)
-	if err := c.ensureSession(ctx); err != nil {
+	if _, err := c.ensureSession(ctx); err != nil {
 		t.Fatalf("ensureSession: %v", err)
 	}
 	if logins != 2 {

@@ -22,15 +22,7 @@ type DNSZone struct {
 
 // InfoDNSZone returns the zone settings. Reads need no zone lock.
 func (c *Client) InfoDNSZone(ctx context.Context, domain string) (*DNSZone, error) {
-	if err := c.ensureSession(ctx); err != nil {
-		return nil, err
-	}
-	raw, err := c.do(ctx, "infoDnsZone", map[string]any{
-		"domainname":     domain,
-		"customernumber": c.CustomerNumber,
-		"apikey":         c.APIKey,
-		"apisessionid":   c.session(),
-	})
+	raw, err := c.sessionCall(ctx, "infoDnsZone", map[string]any{"domainname": domain})
 	if err != nil {
 		return nil, err
 	}
@@ -46,16 +38,7 @@ func (c *Client) InfoDNSZone(ctx context.Context, domain string) (*DNSZone, erro
 func (c *Client) UpdateDNSZone(ctx context.Context, domain string, zone DNSZone) (*DNSZone, error) {
 	unlock := c.zoneLock(domain)
 	defer unlock()
-	if err := c.ensureSession(ctx); err != nil {
-		return nil, err
-	}
-	raw, err := c.do(ctx, "updateDnsZone", map[string]any{
-		"domainname":     domain,
-		"customernumber": c.CustomerNumber,
-		"apikey":         c.APIKey,
-		"apisessionid":   c.session(),
-		"dnszone":        zone,
-	})
+	raw, err := c.sessionCall(ctx, "updateDnsZone", map[string]any{"domainname": domain, "dnszone": zone})
 	if err != nil {
 		return nil, err
 	}

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -90,12 +91,12 @@ func (c *Client) do(ctx context.Context, action string, param any) (json.RawMess
 // ensureSession caches the session id and logs in again once the session has
 // been idle for sessionMaxIdle, e.g. during a long snapshot in the same
 // Terraform run.
-func (c *Client) ensureSession(ctx context.Context) error {
+func (c *Client) ensureSession(ctx context.Context) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.sessionID != "" && time.Since(c.sessionUsed) < sessionMaxIdle {
 		c.sessionUsed = time.Now()
-		return nil
+		return c.sessionID, nil
 	}
 	raw, err := c.do(ctx, "login", map[string]any{
 		"customernumber": c.CustomerNumber,
@@ -103,23 +104,49 @@ func (c *Client) ensureSession(ctx context.Context) error {
 		"apipassword":    c.APIPassword,
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	var data struct {
 		APISessionID string `json:"apisessionid"`
 	}
 	if err := json.Unmarshal(raw, &data); err != nil {
-		return fmt.Errorf("decode login response: %w", err)
+		return "", fmt.Errorf("decode login response: %w", err)
 	}
 	c.sessionID = data.APISessionID
 	c.sessionUsed = time.Now()
-	return nil
+	return c.sessionID, nil
 }
 
-func (c *Client) session() string {
+// sessionCall performs a call with the fields of the session. It logs in once
+// more after statusSessionInvalid, which netcup answers before doing any work.
+func (c *Client) sessionCall(ctx context.Context, action string, param map[string]any) (json.RawMessage, error) {
+	param["customernumber"] = c.CustomerNumber
+	param["apikey"] = c.APIKey
+	session, err := c.ensureSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+	param["apisessionid"] = session
+	raw, err := c.do(ctx, action, param)
+	var apiError *APIError
+	if !errors.As(err, &apiError) || apiError.StatusCode != statusSessionInvalid {
+		return raw, err
+	}
+	c.dropSession(session)
+	if session, err = c.ensureSession(ctx); err != nil {
+		return nil, err
+	}
+	param["apisessionid"] = session
+	return c.do(ctx, action, param)
+}
+
+// dropSession forgets a rejected session, unless another call already replaced it.
+func (c *Client) dropSession(session string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.sessionID
+	if c.sessionID == session {
+		c.sessionID = ""
+	}
 }
 
 // Logout ends the API session. It is rarely needed (sessions expire on their
