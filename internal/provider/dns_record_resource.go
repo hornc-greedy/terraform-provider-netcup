@@ -132,6 +132,9 @@ func (r *dnsRecordResource) Read(ctx context.Context, req resource.ReadRequest, 
 		resp.Diagnostics.AddError("Error reading DNS records", err.Error())
 		return
 	}
+	if len(records) == 0 {
+		addNoRecordsWarning(&resp.Diagnostics, state.Domain.ValueString())
+	}
 
 	for _, rec := range records {
 		if rec.ID == state.ID.ValueString() {

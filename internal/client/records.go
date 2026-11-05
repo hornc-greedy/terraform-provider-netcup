@@ -5,12 +5,23 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 )
 
-// InfoDNSRecords returns all records of a zone. Reads need no zone lock.
+// emptyZoneMessage tells an empty zone from an unknown domain, which has the
+// same status code.
+const emptyZoneMessage = "contain any DNS records"
+
+// InfoDNSRecords returns all records of a zone. Reads need no zone lock. netcup
+// answers an empty zone with an error, and a domain on CloudDNS the same way.
 func (c *Client) InfoDNSRecords(ctx context.Context, domain string) ([]DNSRecord, error) {
 	raw, err := c.sessionCall(ctx, "infoDnsRecords", map[string]any{"domainname": domain})
+	var apiError *APIError
+	if errors.As(err, &apiError) && apiError.StatusCode == statusDNSRecordsFailed && strings.Contains(apiError.LongMessage, emptyZoneMessage) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}

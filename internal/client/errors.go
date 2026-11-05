@@ -6,7 +6,8 @@ import "fmt"
 
 // Status codes netcup returns without documenting them.
 const (
-	statusSessionInvalid = 4001
+	statusSessionInvalid   = 4001
+	statusDNSRecordsFailed = 5029
 )
 
 // APIError is returned whenever the CCP envelope reports status != "success".

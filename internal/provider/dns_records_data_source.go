@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/client"
@@ -89,6 +90,9 @@ func (d *dnsRecordsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		return
 	}
 
+	if len(records) == 0 {
+		addNoRecordsWarning(&resp.Diagnostics, cfg.Domain.ValueString())
+	}
 	cfg.Records = make([]dnsRecordEntry, 0, len(records))
 	for _, rec := range records {
 		cfg.Records = append(cfg.Records, dnsRecordEntry{
@@ -100,4 +104,11 @@ func (d *dnsRecordsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		})
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, cfg)...)
+}
+
+// addNoRecordsWarning names the case that netcup reports a domain on CloudDNS as
+// an empty zone.
+func addNoRecordsWarning(diags *diag.Diagnostics, domain string) {
+	diags.AddWarning("netcup reports no DNS records for "+domain,
+		"A domain on CloudDNS gets the same answer. Manage it with netcup_clouddns_record, and do not apply a plan that creates netcup_dns_record for it.")
 }
