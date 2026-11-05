@@ -33,6 +33,18 @@ jobs:
           cache: true
       - run: make testmock
 
+  docs:
+    name: Generated documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go generate ./...
+      - run: test -z "$(git status --porcelain docs)"
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
