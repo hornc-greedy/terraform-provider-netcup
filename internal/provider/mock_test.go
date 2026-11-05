@@ -2404,6 +2404,62 @@ func TestMockCCPWrongPasswordFails(t *testing.T) {
 	})
 }
 
+func TestMockFailoverRouteTimeoutRoutesNothing(t *testing.T) {
+	m := mockapi.New(t)
+	config := func(extra string) string {
+		return testMockConfig(m, fmt.Sprintf(`
+resource "netcup_failover_ip_route" "test" {
+  failover_ip_id = %d
+  server_id      = %d
+  %s
+}
+`, mockapi.FailoverV4ID, mockapi.DefaultServerID, extra))
+	}
+	routes := func() int {
+		count := 0
+		for _, r := range m.Requests() {
+			if r.Method == http.MethodPatch {
+				count++
+			}
+		}
+		return count
+	}
+	before := 0
+	resource.Test(t, testMockCase(
+		resource.TestStep{
+			Config: config(""),
+			Check: func(*terraform.State) error {
+				before = routes()
+				return nil
+			},
+		},
+		resource.TestStep{
+			Config: config(`timeouts = { create = "1m", update = "1m" }`),
+			Check: func(*terraform.State) error {
+				if got := routes(); got != before {
+					return fmt.Errorf("%d routing requests, want %d", got, before)
+				}
+				return nil
+			},
+		},
+	))
+}
+
+func TestMockFailoverRouteTimeoutEndsTheWait(t *testing.T) {
+	m := mockapi.New(t)
+	m.HoldTasks()
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockConfig(m, fmt.Sprintf(`
+resource "netcup_failover_ip_route" "test" {
+  failover_ip_id = %d
+  server_id      = %d
+  timeouts       = { create = "1s" }
+}
+`, mockapi.FailoverV4ID, mockapi.DefaultServerID)),
+		ExpectError: regexp.MustCompile("context deadline exceeded"),
+	}))
+}
+
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {
 	for attribute, object := range map[string]string{
 		"scp_refresh_token": `data "netcup_servers" "test" {}`,

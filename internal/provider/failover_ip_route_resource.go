@@ -6,7 +6,9 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -34,17 +36,18 @@ func NewFailoverIPRouteResource() resource.Resource {
 }
 
 type failoverIPRouteModel struct {
-	ID           types.String `tfsdk:"id"`
-	FailoverIPID types.Int64  `tfsdk:"failover_ip_id"`
-	ServerID     types.Int64  `tfsdk:"server_id"`
-	IPv6         types.Bool   `tfsdk:"ipv6"`
+	ID           types.String   `tfsdk:"id"`
+	FailoverIPID types.Int64    `tfsdk:"failover_ip_id"`
+	ServerID     types.Int64    `tfsdk:"server_id"`
+	IPv6         types.Bool     `tfsdk:"ipv6"`
+	Timeouts     timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (r *failoverIPRouteResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_failover_ip_route"
 }
 
-func (r *failoverIPRouteResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *failoverIPRouteResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Routing of a failover IP (v4 or v6) to a server (SCP REST API). " +
 			"Routing is asynchronous; the provider waits for completion.",
@@ -70,6 +73,7 @@ func (r *failoverIPRouteResource) Schema(_ context.Context, _ resource.SchemaReq
 				MarkdownDescription: "Set to true for an IPv6 failover. Defaults to `false`.",
 				PlanModifiers:       []planmodifier.Bool{boolRequiresReplace()},
 			},
+			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{Create: true, Update: true}),
 		},
 	}
 }
@@ -99,6 +103,13 @@ func (r *failoverIPRouteResource) Create(ctx context.Context, req resource.Creat
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	limit, diags := plan.Timeouts.Create(ctx, 10*time.Minute)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
 	if err := r.route(ctx, plan); err != nil {
 		resp.Diagnostics.AddError("Error routing failover IP", err.Error())
 		return
@@ -133,14 +144,25 @@ func (r *failoverIPRouteResource) Read(ctx context.Context, req resource.ReadReq
 }
 
 func (r *failoverIPRouteResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan failoverIPRouteModel
+	var plan, state failoverIPRouteModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := r.route(ctx, plan); err != nil {
-		resp.Diagnostics.AddError("Error re-routing failover IP", err.Error())
+	limit, diags := plan.Timeouts.Update(ctx, 10*time.Minute)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
 		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+	// netcup limits routing requests, and a new timeout routes nothing.
+	if !plan.ServerID.Equal(state.ServerID) {
+		if err := r.route(ctx, plan); err != nil {
+			resp.Diagnostics.AddError("Error re-routing failover IP", err.Error())
+			return
+		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
