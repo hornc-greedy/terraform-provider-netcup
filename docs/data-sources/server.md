@@ -29,13 +29,107 @@ output "web_hostname" {
 
 - `id` (Number) Server id to look up.
 
+### Optional
+
+- `load_server_live_info` (Boolean) The `loadServerLiveInfo` query parameter. Defaults to `true`.
+
 ### Read-Only
 
 - `architecture` (String) CPU architecture, e.g. `AMD64`.
 - `disabled` (Boolean) Whether the server is disabled.
+- `disks_available_space_in_mib` (Number) Space available for disks in MiB.
+- `export_count` (Number) The `exportCount` of the server.
+- `gpu_driver_available` (Boolean) Whether `netcup_server_gpu_driver` has a driver for the server.
 - `hostname` (String) Hostname.
+- `ipv4_addresses` (Attributes List) IPv4 addresses of the server. (see [below for nested schema](#nestedatt--ipv4_addresses))
+- `ipv6_addresses` (Attributes List) IPv6 networks of the server. (see [below for nested schema](#nestedatt--ipv6_addresses))
 - `max_cpu_count` (Number) Maximum CPU count.
 - `name` (String) Server name.
 - `nickname` (String) Nickname.
 - `rescue_system_active` (Boolean) Whether the rescue system is active.
-- `snapshot_count` (Number) Number of snapshots.
+- `server_live_info` (Attributes) Live state of the server. Null if not loaded or if netcup cannot report it. `netcup_server_interfaces` has the interfaces. (see [below for nested schema](#nestedatt--server_live_info))
+- `site` (Attributes) Site of the server. (see [below for nested schema](#nestedatt--site))
+- `snapshot_allowed` (Boolean) Whether the server allows snapshots.
+- `snapshot_count` (Number, Deprecated) Deprecated, use `export_count`, which has the same value.
+- `template` (Attributes) Template of the server. (see [below for nested schema](#nestedatt--template))
+
+<a id="nestedatt--ipv4_addresses"></a>
+### Nested Schema for `ipv4_addresses`
+
+Read-Only:
+
+- `broadcast` (String) Broadcast address.
+- `gateway` (String) Gateway.
+- `id` (Number) Id of the address.
+- `ip` (String) IP address.
+- `netmask` (String) Netmask.
+
+
+<a id="nestedatt--ipv6_addresses"></a>
+### Nested Schema for `ipv6_addresses`
+
+Read-Only:
+
+- `gateway` (String) Gateway.
+- `id` (Number) Id of the network.
+- `network_prefix` (String) Network prefix.
+- `network_prefix_length` (Number) Length of the prefix.
+
+
+<a id="nestedatt--server_live_info"></a>
+### Nested Schema for `server_live_info`
+
+Read-Only:
+
+- `autostart` (Boolean) Whether the server starts with its node.
+- `backup_time` (String) Daily backup start, e.g. `01:30:00+02:00`.
+- `bootorder` (List of String) Boot order.
+- `cloudinit_attached` (Boolean) The `cloudinitAttached` value of netcup.
+- `config_changed` (Boolean) The `configChanged` value of netcup.
+- `cores_per_socket` (Number) Cores per socket.
+- `cpu_count` (Number) CPU count.
+- `cpu_max_count` (Number) Maximum CPU count.
+- `current_server_memory_in_mib` (Number) Current memory in MiB.
+- `disks` (Attributes List) Disks of the server. (see [below for nested schema](#nestedatt--server_live_info--disks))
+- `keyboard_layout` (String) Keyboard layout.
+- `latest_qemu` (Boolean) The `latestQemu` value of netcup.
+- `machine_type` (String) Machine type.
+- `max_server_memory_in_mib` (Number) Maximum memory in MiB.
+- `nested_guest` (Boolean) The `nestedGuest` value of netcup.
+- `os_optimization` (String) OS optimization.
+- `required_storage_optimization` (String) `INCONSISTENT`, `COMPAT`, `SLOW`, `FAST` or `NO`. `netcup_server_storage_optimization` runs an optimization.
+- `sockets` (Number) CPU sockets.
+- `state` (String) Power state.
+- `template` (String) Name of the template.
+- `uefi` (Boolean) Whether the server boots with UEFI.
+- `uptime_in_seconds` (Number) Uptime in seconds.
+
+<a id="nestedatt--server_live_info--disks"></a>
+### Nested Schema for `server_live_info.disks`
+
+Read-Only:
+
+- `allocation_in_mib` (Number) Allocation in MiB.
+- `capacity_in_mib` (Number) Capacity in MiB.
+- `dev` (String) Device name.
+- `driver` (String) Driver.
+
+
+
+<a id="nestedatt--site"></a>
+### Nested Schema for `site`
+
+Read-Only:
+
+- `city` (String) City of the site.
+- `id` (Number) Id of the site.
+- `name` (String) Name of the site, null if netcup sends none.
+
+
+<a id="nestedatt--template"></a>
+### Nested Schema for `template`
+
+Read-Only:
+
+- `id` (Number) Id of the template.
+- `name` (String) Name of the template.

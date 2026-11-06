@@ -17,6 +17,52 @@ type Server struct {
 	RescueSystemActive bool   `json:"rescueSystemActive"`
 
 	LiveInfo *ServerLiveInfo `json:"serverLiveInfo"`
+
+	Template                 *ServerTemplate `json:"template"`
+	IPv4Addresses            []ServerIPv4    `json:"ipv4Addresses"`
+	IPv6Addresses            []ServerIPv6    `json:"ipv6Addresses"`
+	Site                     *ServerSite     `json:"site"`
+	DisksAvailableSpaceInMiB *int64          `json:"disksAvailableSpaceInMiB"`
+	SnapshotAllowed          *bool           `json:"snapshotAllowed"`
+	GPUDriverAvailable       *bool           `json:"gpuDriverAvailable"`
+}
+
+// ServerTemplate mirrors the ServerTemplateMinimal schema.
+type ServerTemplate struct {
+	ID   *int64 `json:"id"`
+	Name string `json:"name"`
+}
+
+// ServerSite mirrors the Site schema.
+type ServerSite struct {
+	ID   *int64 `json:"id"`
+	Name string `json:"name"`
+	City string `json:"city"`
+}
+
+// ServerIPv4 mirrors the IPv4AddressMinimal schema.
+type ServerIPv4 struct {
+	ID        *int64  `json:"id"`
+	IP        string  `json:"ip"`
+	Netmask   string  `json:"netmask"`
+	Gateway   *string `json:"gateway"`
+	Broadcast *string `json:"broadcast"`
+}
+
+// ServerIPv6 mirrors the IPv6AddressMinimal schema.
+type ServerIPv6 struct {
+	ID                  *int64  `json:"id"`
+	NetworkPrefix       string  `json:"networkPrefix"`
+	NetworkPrefixLength *int64  `json:"networkPrefixLength"`
+	Gateway             *string `json:"gateway"`
+}
+
+// ServerLiveDisk mirrors the ServerDisk schema.
+type ServerLiveDisk struct {
+	Dev             string `json:"dev"`
+	Driver          string `json:"driver"`
+	CapacityInMiB   *int64 `json:"capacityInMiB"`
+	AllocationInMiB *int64 `json:"allocationInMiB"`
 }
 
 // ServerLiveInfo is the subset of the detail endpoint's serverLiveInfo the
@@ -32,6 +78,20 @@ type ServerLiveInfo struct {
 	KeyboardLayout string          `json:"keyboardLayout"`
 	BackupTime     string          `json:"backupTime"`
 	Interfaces     []LiveInterface `json:"interfaces"`
+
+	Disks                       []ServerLiveDisk `json:"disks"`
+	RequiredStorageOptimization string           `json:"requiredStorageOptimization"`
+	Template                    *string          `json:"template"`
+	UptimeInSeconds             *int64           `json:"uptimeInSeconds"`
+	CurrentServerMemoryInMiB    *int64           `json:"currentServerMemoryInMiB"`
+	MaxServerMemoryInMiB        *int64           `json:"maxServerMemoryInMiB"`
+	CPUCount                    *int64           `json:"cpuCount"`
+	CPUMaxCount                 *int64           `json:"cpuMaxCount"`
+	LatestQemu                  *bool            `json:"latestQemu"`
+	ConfigChanged               *bool            `json:"configChanged"`
+	NestedGuest                 *bool            `json:"nestedGuest"`
+	MachineType                 string           `json:"machineType"`
+	CloudinitAttached           *bool            `json:"cloudinitAttached"`
 }
 
 // LiveInterface is the subset of an entry of serverLiveInfo.interfaces the

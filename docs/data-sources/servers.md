@@ -37,3 +37,12 @@ Read-Only:
 - `id` (Number) Server id.
 - `name` (String) Server name.
 - `nickname` (String) Nickname.
+- `template` (Attributes) Template of the server. (see [below for nested schema](#nestedatt--servers--template))
+
+<a id="nestedatt--servers--template"></a>
+### Nested Schema for `servers.template`
+
+Read-Only:
+
+- `id` (Number) Id of the template.
+- `name` (String) Name of the template.

@@ -31,11 +31,12 @@ type serversModel struct {
 }
 
 type serverListEntryModel struct {
-	ID       types.Int64  `tfsdk:"id"`
-	Name     types.String `tfsdk:"name"`
-	Hostname types.String `tfsdk:"hostname"`
-	Nickname types.String `tfsdk:"nickname"`
-	Disabled types.Bool   `tfsdk:"disabled"`
+	ID       types.Int64    `tfsdk:"id"`
+	Name     types.String   `tfsdk:"name"`
+	Hostname types.String   `tfsdk:"hostname"`
+	Nickname types.String   `tfsdk:"nickname"`
+	Disabled types.Bool     `tfsdk:"disabled"`
+	Template *templateModel `tfsdk:"template"`
 }
 
 func (d *serversDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -56,6 +57,14 @@ func (d *serversDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 						"hostname": schema.StringAttribute{Computed: true, MarkdownDescription: "Hostname."},
 						"nickname": schema.StringAttribute{Computed: true, MarkdownDescription: "Nickname."},
 						"disabled": schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether the server is disabled."},
+						"template": schema.SingleNestedAttribute{
+							Computed:            true,
+							MarkdownDescription: "Template of the server.",
+							Attributes: map[string]schema.Attribute{
+								"id":   schema.Int64Attribute{Computed: true, MarkdownDescription: "Id of the template."},
+								"name": schema.StringAttribute{Computed: true, MarkdownDescription: "Name of the template."},
+							},
+						},
 					},
 				},
 			},
@@ -86,7 +95,16 @@ func (d *serversDataSource) Read(ctx context.Context, _ datasource.ReadRequest, 
 			Hostname: types.StringValue(s.Hostname),
 			Nickname: types.StringValue(s.Nickname),
 			Disabled: types.BoolValue(s.Disabled),
+			Template: template(s.Template),
 		})
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+}
+
+// template converts the template of a server, which netcup may not report.
+func template(t *scp.ServerTemplate) *templateModel {
+	if t == nil {
+		return nil
+	}
+	return &templateModel{ID: types.Int64PointerValue(t.ID), Name: types.StringValue(t.Name)}
 }

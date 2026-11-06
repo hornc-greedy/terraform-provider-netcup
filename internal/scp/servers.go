@@ -16,8 +16,14 @@ func (c *Client) ListServers(ctx context.Context) ([]Server, error) {
 
 // GetServer returns one server by id, including live info fields.
 func (c *Client) GetServer(ctx context.Context, id int) (*Server, error) {
+	return c.GetServerWithLiveInfo(ctx, id, true)
+}
+
+// GetServerWithLiveInfo returns one server by id with the given
+// loadServerLiveInfo.
+func (c *Client) GetServerWithLiveInfo(ctx context.Context, id int, load bool) (*Server, error) {
 	var out Server
-	if err := c.do(ctx, "GET", "/servers/"+strconv.Itoa(id)+"?loadServerLiveInfo=true", nil, &out); err != nil {
+	if err := c.do(ctx, "GET", "/servers/"+strconv.Itoa(id)+"?loadServerLiveInfo="+strconv.FormatBool(load), nil, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

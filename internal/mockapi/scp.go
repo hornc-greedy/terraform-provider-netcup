@@ -436,10 +436,11 @@ func (s *Server) listServers(c *call) (int, any) {
 		Hostname string `json:"hostname"`
 		Nickname string `json:"nickname"`
 		Disabled bool   `json:"disabled"`
+		Template any    `json:"template"`
 	}
 	all := make([]minimal, 0, len(s.scp.servers))
 	for _, v := range sortedValues(s.scp.servers) {
-		all = append(all, minimal{v.ID, v.Name, v.Hostname, v.Nickname, v.Disabled})
+		all = append(all, minimal{v.ID, v.Name, v.Hostname, v.Nickname, v.Disabled, map[string]any{"id": 1, "name": "VPS mock"}})
 	}
 	return http.StatusOK, page(all, c)
 }
@@ -457,12 +458,51 @@ func (s *Server) getServer(c *call) (int, any) {
 	type live struct {
 		liveInfo
 		Interfaces []liveInterface `json:"interfaces"`
+		Disks      any             `json:"disks"`
+		Optimize   string          `json:"requiredStorageOptimization"`
+		Template   string          `json:"template"`
+		Uptime     int             `json:"uptimeInSeconds"`
+		Memory     int             `json:"currentServerMemoryInMiB"`
+		MaxMemory  int             `json:"maxServerMemoryInMiB"`
+		CPUs       int             `json:"cpuCount"`
+		MaxCPUs    int             `json:"cpuMaxCount"`
+		Qemu       bool            `json:"latestQemu"`
+		Changed    bool            `json:"configChanged"`
+		Nested     bool            `json:"nestedGuest"`
+		Machine    string          `json:"machineType"`
+		Cloudinit  bool            `json:"cloudinitAttached"`
 	}
 	type detail struct {
 		*server
-		ServerLiveInfo live `json:"serverLiveInfo"`
+		ServerLiveInfo *live `json:"serverLiveInfo"`
+		Template       any   `json:"template"`
+		IPv4           any   `json:"ipv4Addresses"`
+		IPv6           any   `json:"ipv6Addresses"`
+		Site           any   `json:"site"`
+		Space          int   `json:"disksAvailableSpaceInMiB"`
+		Snapshots      bool  `json:"snapshotAllowed"`
+		GPU            bool  `json:"gpuDriverAvailable"`
 	}
-	out := detail{server: v, ServerLiveInfo: live{liveInfo: v.live, Interfaces: []liveInterface{}}}
+	out := detail{
+		server: v, ServerLiveInfo: &live{
+			liveInfo: v.live, Interfaces: []liveInterface{},
+			Disks:    []map[string]any{{"dev": "vda", "driver": "VIRTIO", "capacityInMiB": 2048, "allocationInMiB": 1024}},
+			Optimize: "NO", Template: "VPS mock", Uptime: 60, Memory: 1024, MaxMemory: 2048, CPUs: 2, MaxCPUs: 4,
+			Qemu: true, Changed: true, Nested: true, Machine: "q35", Cloudinit: true,
+		},
+		Template: map[string]any{"id": 1, "name": "VPS mock"},
+		// The Site schema requires name, but its properties lack it.
+		Site:  map[string]any{"id": 2, "name": "NUE", "city": "Nuremberg"},
+		IPv4:  []map[string]any{{"id": 3, "ip": "192.0.2.10", "netmask": "255.255.255.0", "gateway": "192.0.2.1", "broadcast": nil}},
+		IPv6:  []map[string]any{{"id": 4, "networkPrefix": "2001:db8::", "networkPrefixLength": 64, "gateway": nil}},
+		Space: 1024, Snapshots: true, GPU: s.scp.gpuAvailable,
+	}
+	if c.query.Get("loadServerLiveInfo") == "false" {
+		return http.StatusOK, detail{
+			server: out.server, Template: out.Template, IPv4: out.IPv4, IPv6: out.IPv6, Site: out.Site,
+			Space: out.Space, Snapshots: out.Snapshots, GPU: out.GPU,
+		}
+	}
 	for _, i := range s.scp.interfaces[v.ID] {
 		entry := liveInterface{Mac: i.mac, VlanInterface: i.vlanID != 0}
 		if i.vlanID != 0 {

@@ -2404,6 +2404,78 @@ func TestMockCCPWrongPasswordFails(t *testing.T) {
 	})
 }
 
+func TestMockServerDataSourceFields(t *testing.T) {
+	m := mockapi.New(t)
+	m.EnableGPU()
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockConfig(m, fmt.Sprintf(`
+data "netcup_server" "live" {
+  id = %[1]d
+}
+
+data "netcup_server" "plain" {
+  id                    = %[1]d
+  load_server_live_info = false
+}
+`, mockapi.DefaultServerID)),
+		Check: resource.ComposeAggregateTestCheckFunc(
+			resource.TestCheckResourceAttr("data.netcup_server.live", "export_count", strconv.Itoa(mockapi.DefaultExportCount)),
+			resource.TestCheckResourceAttr("data.netcup_server.live", "template.name", "VPS mock"),
+			resource.TestCheckResourceAttr("data.netcup_server.live", "site.city", "Nuremberg"),
+			resource.TestCheckResourceAttr("data.netcup_server.live", "ipv4_addresses.0.ip", "192.0.2.10"),
+			resource.TestCheckNoResourceAttr("data.netcup_server.live", "ipv4_addresses.0.broadcast"),
+			resource.TestCheckResourceAttr("data.netcup_server.live", "ipv6_addresses.0.network_prefix_length", "64"),
+			resource.TestCheckResourceAttr("data.netcup_server.live", "disks_available_space_in_mib", "1024"),
+			resource.TestCheckResourceAttr("data.netcup_server.live", "snapshot_allowed", "true"),
+			resource.TestCheckResourceAttr("data.netcup_server.live", "gpu_driver_available", "true"),
+			resource.TestCheckResourceAttr("data.netcup_server.live", "server_live_info.state", "RUNNING"),
+			resource.TestCheckResourceAttr("data.netcup_server.live", "server_live_info.keyboard_layout", "de"),
+			resource.TestCheckNoResourceAttr("data.netcup_server.plain", "server_live_info.state"),
+			resource.TestCheckResourceAttr("data.netcup_server.plain", "template.name", "VPS mock"),
+		),
+	}))
+}
+
+func TestMockServersTemplate(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockConfig(m, `data "netcup_servers" "test" {}`),
+		Check:  resource.TestCheckResourceAttr("data.netcup_servers.test", "servers.0.template.name", "VPS mock"),
+	}))
+}
+
+func TestMockServerLiveInfoFields(t *testing.T) {
+	m := mockapi.New(t)
+	check := func(name, value string) resource.TestCheckFunc {
+		return resource.TestCheckResourceAttr("data.netcup_server.test", name, value)
+	}
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockConfig(m, fmt.Sprintf(`
+data "netcup_server" "test" {
+  id = %d
+}
+`, mockapi.DefaultServerID)),
+		Check: resource.ComposeAggregateTestCheckFunc(
+			check("template.id", "1"), check("site.id", "2"), check("site.name", "NUE"),
+			check("server_live_info.disks.0.dev", "vda"),
+			check("server_live_info.disks.0.capacity_in_mib", "2048"),
+			check("server_live_info.disks.0.allocation_in_mib", "1024"),
+			check("server_live_info.required_storage_optimization", "NO"),
+			check("server_live_info.template", "VPS mock"),
+			check("server_live_info.uptime_in_seconds", "60"),
+			check("server_live_info.current_server_memory_in_mib", "1024"),
+			check("server_live_info.max_server_memory_in_mib", "2048"),
+			check("server_live_info.cpu_count", "2"),
+			check("server_live_info.cpu_max_count", "4"),
+			check("server_live_info.latest_qemu", "true"),
+			check("server_live_info.config_changed", "true"),
+			check("server_live_info.nested_guest", "true"),
+			check("server_live_info.machine_type", "q35"),
+			check("server_live_info.cloudinit_attached", "true"),
+		),
+	}))
+}
+
 func TestMockFailoverRouteTimeoutRoutesNothing(t *testing.T) {
 	m := mockapi.New(t)
 	config := func(extra string) string {
