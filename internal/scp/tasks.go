@@ -4,18 +4,36 @@ package scp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"time"
 )
 
 // TaskInfo is the (subset of the) response of asynchronous operations and of
 // GET /tasks/{uuid}.
 type TaskInfo struct {
-	UUID          string         `json:"uuid"`
-	Name          string         `json:"name"`
-	State         string         `json:"state"`
-	Message       string         `json:"message"`
-	ResponseError *ResponseError `json:"responseError"`
+	UUID          string          `json:"uuid"`
+	Name          string          `json:"name"`
+	State         string          `json:"state"`
+	StartedAt     string          `json:"startedAt"`
+	FinishedAt    string          `json:"finishedAt"`
+	ExecutingUser *UserMinimal    `json:"executingUser"`
+	TaskProgress  *TaskProgress   `json:"taskProgress"`
+	Message       string          `json:"message"`
+	OnRollback    *bool           `json:"onRollback"`
+	Steps         []TaskInfoStep  `json:"steps"`
+	Result        json.RawMessage `json:"result"`
+	ResponseError *ResponseError  `json:"responseError"`
+}
+
+// TaskInfoStep mirrors the TaskInfoStep schema.
+type TaskInfoStep struct {
+	UUID       string `json:"uuid"`
+	Name       string `json:"name"`
+	State      string `json:"state"`
+	StartedAt  string `json:"startedAt"`
+	FinishedAt string `json:"finishedAt"`
 }
 
 // ResponseError mirrors the ResponseError schema, which TaskInfo holds beside
@@ -49,7 +67,7 @@ func (t TaskInfo) done() bool {
 // GetTask returns the current state of a task.
 func (c *Client) GetTask(ctx context.Context, uuid string) (*TaskInfo, error) {
 	var out TaskInfo
-	if err := c.do(ctx, "GET", "/tasks/"+uuid, nil, &out); err != nil {
+	if err := c.do(ctx, "GET", "/tasks/"+url.PathEscape(uuid), nil, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

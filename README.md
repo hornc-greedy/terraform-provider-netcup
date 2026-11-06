@@ -103,16 +103,16 @@ The refresh token stays valid as long as it is used at least once every 30 days.
 | CloudDNS | `netcup_clouddns_record`, `netcup_clouddns_acme_challenge` | `netcup_clouddns_record`, `netcup_clouddns_domain`, `netcup_clouddns_domains`, `netcup_clouddns_records`, `netcup_clouddns_revision`, `netcup_clouddns_revisions`, `netcup_clouddns_record_types`, `netcup_clouddns_acme_challenges` |  |  |
 | Servers | `netcup_server_settings` | `netcup_servers`, `netcup_server`, `netcup_server_guest_agent`, `netcup_server_guest_agent_status` |  | `netcup_server_state` |
 | Disks | `netcup_server_disk_driver` | `netcup_server_disks`, `netcup_server_disk`, `netcup_server_disk_supported_drivers` |  | `netcup_server_disk_format`, `netcup_server_storage_optimization` |
-| Images, ISO and rescue | `netcup_server_iso`, `netcup_server_rescue_system` | `netcup_server_image_flavours`, `netcup_server_iso_images` | `netcup_server_rescue_system`, `netcup_server_gpu_driver` | `netcup_server_image_setup`, `netcup_server_user_image_setup` |
-| Interfaces and reverse DNS | `netcup_server_interface`, `netcup_reverse_dns` | `netcup_server_interface`, `netcup_server_interfaces` |  |  |
+| Images, ISO and rescue | `netcup_server_iso`, `netcup_server_rescue_system` | `netcup_server_iso`, `netcup_server_image_flavours`, `netcup_server_iso_images` | `netcup_server_rescue_system`, `netcup_server_gpu_driver` | `netcup_server_image_setup`, `netcup_server_user_image_setup` |
+| Interfaces and reverse DNS | `netcup_server_interface`, `netcup_reverse_dns` | `netcup_server_interface`, `netcup_reverse_dns`, `netcup_server_interfaces` |  |  |
 | Metrics and logs |  | `netcup_server_metrics_cpu`, `netcup_server_metrics_disk`, `netcup_server_metrics_network`, `netcup_server_metrics_network_packet`, `netcup_server_logs` |  |  |
-| Snapshots | `netcup_server_snapshot` | `netcup_server_snapshots`, `netcup_server_snapshot_dryrun` |  | `netcup_server_snapshot_revert`, `netcup_server_snapshot_export` |
-| Firewall | `netcup_firewall_policy`, `netcup_server_firewall` | `netcup_firewall_policies` |  | `netcup_server_firewall_reapply`, `netcup_server_firewall_restore_copied_policies` |
+| Snapshots | `netcup_server_snapshot` | `netcup_server_snapshot`, `netcup_server_snapshots`, `netcup_server_snapshot_dryrun` |  | `netcup_server_snapshot_revert`, `netcup_server_snapshot_export` |
+| Firewall | `netcup_firewall_policy`, `netcup_server_firewall` | `netcup_server_firewall`, `netcup_firewall_policies` |  | `netcup_server_firewall_reapply`, `netcup_server_firewall_restore_copied_policies` |
 | Failover IPs | `netcup_failover_ip_route` | `netcup_failover_ips` |  |  |
 | VLANs | `netcup_user_vlan` | `netcup_user_vlan`, `netcup_vlan`, `netcup_user_vlans` |  |  |
 | User and SSH keys | `netcup_user`, `netcup_ssh_key` | `netcup_user`, `netcup_user_logs`, `netcup_ssh_keys` |  |  |
 | Uploads | `netcup_user_image`, `netcup_user_iso` | `netcup_user_images`, `netcup_user_isos` | `netcup_user_image_download`, `netcup_user_iso_download` |  |
-| Tasks and maintenance |  | `netcup_tasks`, `netcup_maintenance` (deprecated, removed in 2.0.0) |  | `netcup_task_cancel` |
+| Tasks and maintenance |  | `netcup_task`, `netcup_tasks`, `netcup_maintenance` (deprecated, removed in 2.0.0) |  | `netcup_task_cancel` |
 
 The [API coverage guide](docs/guides/api-coverage.md) maps every API operation to
 its object and names how it was tested.

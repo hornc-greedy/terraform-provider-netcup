@@ -8,11 +8,14 @@ import (
 	"strconv"
 )
 
-// ServerFirewall mirrors the firewall state of one server interface (subset).
+// ServerFirewall mirrors the ServerFirewall schema.
 type ServerFirewall struct {
-	CopiedPolicies []FirewallPolicy `json:"copiedPolicies"`
-	UserPolicies   []FirewallPolicy `json:"userPolicies"`
-	Active         bool             `json:"active"`
+	CopiedPolicies      []FirewallPolicy `json:"copiedPolicies"`
+	UserPolicies        []FirewallPolicy `json:"userPolicies"`
+	IngressImplicitRule string           `json:"ingressImplicitRule"`
+	EgressImplicitRule  string           `json:"egressImplicitRule"`
+	Consistent          *bool            `json:"consistent"`
+	Active              bool             `json:"active"`
 }
 
 // identifier is the IdentifierInt wrapper the save body expects.
@@ -35,6 +38,16 @@ func sfwPath(serverID int, mac string) string {
 func (c *Client) GetServerFirewall(ctx context.Context, serverID int, mac string) (*ServerFirewall, error) {
 	var out ServerFirewall
 	if err := c.do(ctx, "GET", sfwPath(serverID, mac), nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// CheckServerFirewall is GetServerFirewall with consistencyCheck, which makes
+// netcup set Consistent.
+func (c *Client) CheckServerFirewall(ctx context.Context, serverID int, mac string) (*ServerFirewall, error) {
+	var out ServerFirewall
+	if err := c.do(ctx, "GET", sfwPath(serverID, mac)+"?consistencyCheck=true", nil, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

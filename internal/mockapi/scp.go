@@ -46,11 +46,18 @@ type responseError struct {
 }
 
 type taskInfo struct {
-	UUID          string         `json:"uuid"`
-	Name          string         `json:"name,omitempty"`
-	State         string         `json:"state"`
-	Message       *string        `json:"message,omitempty"`
-	ResponseError *responseError `json:"responseError,omitempty"`
+	UUID          string           `json:"uuid"`
+	Name          string           `json:"name,omitempty"`
+	State         string           `json:"state"`
+	StartedAt     string           `json:"startedAt,omitempty"`
+	FinishedAt    string           `json:"finishedAt,omitempty"`
+	ExecutingUser map[string]any   `json:"executingUser,omitempty"`
+	TaskProgress  map[string]any   `json:"taskProgress,omitempty"`
+	OnRollback    bool             `json:"onRollback,omitempty"`
+	Steps         []map[string]any `json:"steps,omitempty"`
+	Result        map[string]any   `json:"result,omitempty"`
+	Message       *string          `json:"message,omitempty"`
+	ResponseError *responseError   `json:"responseError,omitempty"`
 }
 
 type liveInfo struct {
@@ -399,10 +406,12 @@ func (s *Server) getTask(c *call) (int, any) {
 	if t.State == "WAITING_FOR_CANCEL" {
 		return http.StatusOK, t
 	}
+	out := *t
+	out.State = "FINISHED"
 	if f := s.scp.taskOverride; f != nil {
-		return http.StatusOK, &taskInfo{UUID: t.UUID, Name: t.Name, State: f.State, ResponseError: f.ResponseError}
+		out.State, out.ResponseError = f.State, f.ResponseError
 	}
-	return http.StatusOK, &taskInfo{UUID: t.UUID, Name: t.Name, State: "FINISHED"}
+	return http.StatusOK, &out
 }
 
 func (s *Server) setRDNS(c *call) (int, any) {
@@ -802,10 +811,14 @@ func (s *Server) getFirewall(c *call) (int, any) {
 	if !ok {
 		return notFound()
 	}
-	return http.StatusOK, map[string]any{
+	out := map[string]any{
 		"copiedPolicies": s.policiesByID(fw.copied), "userPolicies": s.policiesByID(fw.user),
-		"consistent": true, "active": fw.active,
+		"ingressImplicitRule": "DROP_ALL", "egressImplicitRule": "ACCEPT_ALL", "active": fw.active,
 	}
+	if c.query.Get("consistencyCheck") == "true" {
+		out["consistent"] = true
+	}
+	return http.StatusOK, out
 }
 
 func (s *Server) putFirewall(c *call) (int, any) {
@@ -1698,7 +1711,15 @@ func (s *Server) FinishTask(uuid string) {
 func (s *Server) StartTask() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.scp.startTask("ServerMockTask", defaultServerID).UUID
+	t := s.scp.startTask("ServerMockTask", defaultServerID)
+	message := "mock message"
+	t.StartedAt, t.FinishedAt, t.Message = snapshotCreated, snapshotCreated, &message
+	t.ExecutingUser = map[string]any{"id": UserID, "username": "mock"}
+	t.TaskProgress = map[string]any{"expectedFinishedAt": snapshotCreated, "progressInPercent": 50}
+	t.OnRollback = true
+	t.Steps = []map[string]any{{"uuid": "step-1", "name": "first", "state": "FINISHED", "startedAt": snapshotCreated, "finishedAt": snapshotCreated}}
+	t.Result = map[string]any{"ok": true}
+	return t.UUID
 }
 
 var defaultTimeZone = "Europe/Berlin"

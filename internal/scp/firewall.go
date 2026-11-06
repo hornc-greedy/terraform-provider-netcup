@@ -22,6 +22,8 @@ type FirewallRule struct {
 	SourcePorts      string   `json:"sourcePorts,omitempty"`
 	Destinations     []string `json:"destinations,omitempty"`
 	DestinationPorts string   `json:"destinationPorts,omitempty"`
+
+	NumberOfEffectiveRules *int64 `json:"numberOfEffectiveRules,omitempty"`
 }
 
 // FirewallPolicy mirrors the FirewallPolicy schema. On create the API consumes

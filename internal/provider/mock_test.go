@@ -2476,6 +2476,146 @@ data "netcup_server" "test" {
 	}))
 }
 
+func TestMockLookupDataSources(t *testing.T) {
+	m := mockapi.New(t)
+	m.AddSnapshot("s")
+	m.MarkSnapshotExported("s", 42)
+	m.SetAttachedIso("install.iso")
+	uuid := m.StartTask()
+	task := func(name, value string) resource.TestCheckFunc {
+		return resource.TestCheckResourceAttr("data.netcup_task.test", name, value)
+	}
+	snapshot := func(name, value string) resource.TestCheckFunc {
+		return resource.TestCheckResourceAttr("data.netcup_server_snapshot.test", name, value)
+	}
+	resource.Test(t, testMockCase(resource.TestStep{
+		PreConfig: func() {
+			client := scp.NewForServer(m.URL, mockapi.RefreshToken)
+			for ip, host := range map[string]string{"192.0.2.10": "v4.example.com", "2001:db8::1": "v6.example.com"} {
+				if err := client.SetReverseDNS(context.Background(), ip, host); err != nil {
+					t.Fatal(err)
+				}
+			}
+		},
+		Config: testMockConfig(m, fmt.Sprintf(`
+data "netcup_server_snapshot" "test" {
+  server_id = %[1]d
+  name      = "s"
+}
+
+data "netcup_server_iso" "test" {
+  server_id = %[1]d
+}
+
+data "netcup_reverse_dns" "v4" {
+  ip = "192.0.2.10"
+}
+
+data "netcup_reverse_dns" "v6" {
+  ip = "2001:db8::1"
+}
+
+data "netcup_reverse_dns" "none" {
+  ip = "192.0.2.99"
+}
+
+data "netcup_task" "test" {
+  uuid = %[2]q
+}
+
+data "netcup_maintenance" "test" {}
+`, mockapi.DefaultServerID, uuid)),
+		Check: resource.ComposeAggregateTestCheckFunc(
+			snapshot("exported_size_in_kib", "42"), snapshot("exported", "true"), snapshot("uuid", "snap-s"),
+			snapshot("disks.0", "vda"), snapshot("state", "SHUTOFF"), snapshot("online", "false"),
+			resource.TestCheckResourceAttrSet("data.netcup_server_snapshot.test", "creation_time"),
+			resource.TestCheckNoResourceAttr("data.netcup_server_snapshot.test", "description"),
+			resource.TestCheckResourceAttr("data.netcup_server_iso.test", "iso_attached", "true"),
+			resource.TestCheckResourceAttr("data.netcup_server_iso.test", "iso", "install.iso"),
+			resource.TestCheckResourceAttr("data.netcup_reverse_dns.v4", "rdns", "v4.example.com"),
+			resource.TestCheckResourceAttr("data.netcup_reverse_dns.v6", "rdns", "v6.example.com"),
+			resource.TestCheckNoResourceAttr("data.netcup_reverse_dns.none", "rdns"),
+			task("name", "ServerMockTask"), task("state", "FINISHED"),
+			task("started_at", "2026-11-06T10:00:00Z"), task("finished_at", "2026-11-06T10:00:00Z"),
+			task("executing_user.username", "mock"),
+			task("task_progress.progress_in_percent", "50"),
+			task("task_progress.expected_finished_at", "2026-11-06T10:00:00Z"),
+			task("message", "mock message"), task("on_rollback", "true"),
+			task("steps.0.name", "first"), task("steps.0.uuid", "step-1"), task("steps.0.state", "FINISHED"),
+			task("result", `{"ok":true}`),
+			resource.TestCheckResourceAttrSet("data.netcup_maintenance.test", "%"),
+		),
+	}))
+}
+
+func TestMockTaskResponseError(t *testing.T) {
+	m := mockapi.New(t)
+	uuid := m.StartTask()
+	m.FailTasks("disk full")
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockConfig(m, fmt.Sprintf(`
+data "netcup_task" "test" {
+  uuid = %q
+}
+`, uuid)),
+		Check: resource.ComposeAggregateTestCheckFunc(
+			resource.TestCheckResourceAttr("data.netcup_task.test", "state", "ERROR"),
+			resource.TestCheckResourceAttr("data.netcup_task.test", "response_error.message", "disk full"),
+		),
+	}))
+}
+
+func TestMockServerFirewallDataSource(t *testing.T) {
+	m := mockapi.New(t)
+	config := func(check string) string {
+		return testMockConfig(m, fmt.Sprintf(`
+resource "netcup_firewall_policy" "test" {
+  name = "web"
+
+  rule {
+    direction         = "INGRESS"
+    protocol          = "TCP"
+    action            = "ACCEPT"
+    destination_ports = "443"
+  }
+}
+
+resource "netcup_server_firewall" "test" {
+  server_id  = %[1]d
+  mac        = %[2]q
+  policy_ids = [netcup_firewall_policy.test.id]
+}
+
+data "netcup_server_firewall" "test" {
+  server_id  = %[1]d
+  mac        = %[2]q
+  %[3]s
+  depends_on = [netcup_server_firewall.test]
+}
+`, mockapi.DefaultServerID, mockapi.DefaultMAC, check))
+	}
+	address := "data.netcup_server_firewall.test"
+	resource.Test(t, testMockCase(
+		resource.TestStep{
+			Config: config(""),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckNoResourceAttr(address, "consistent"),
+				resource.TestCheckResourceAttr(address, "active", "true"),
+				resource.TestCheckResourceAttr(address, "ingress_implicit_rule", "DROP_ALL"),
+				resource.TestCheckResourceAttr(address, "egress_implicit_rule", "ACCEPT_ALL"),
+				resource.TestCheckResourceAttr(address, "copied_policies.#", "0"),
+				resource.TestCheckResourceAttr(address, "user_policies.0.name", "web"),
+				resource.TestCheckResourceAttr(address, "user_policies.0.rules.0.protocol", "TCP"),
+				resource.TestCheckResourceAttr(address, "user_policies.0.rules.0.destination_ports", "443"),
+			),
+		},
+		resource.TestStep{
+			Config: config("consistency_check = true"),
+			Check:  resource.TestCheckResourceAttr(address, "consistent", "true"),
+		},
+	))
+}
+
 func TestMockFailoverRouteTimeoutRoutesNothing(t *testing.T) {
 	m := mockapi.New(t)
 	config := func(extra string) string {
@@ -2529,6 +2669,19 @@ resource "netcup_failover_ip_route" "test" {
 }
 `, mockapi.FailoverV4ID, mockapi.DefaultServerID)),
 		ExpectError: regexp.MustCompile("context deadline exceeded"),
+	}))
+}
+
+func TestMockSnapshotNotFoundFails(t *testing.T) {
+	m := mockapi.New(t)
+	resource.Test(t, testMockCase(resource.TestStep{
+		Config: testMockConfig(m, fmt.Sprintf(`
+data "netcup_server_snapshot" "test" {
+  server_id = %d
+  name      = "none"
+}
+`, mockapi.DefaultServerID)),
+		ExpectError: regexp.MustCompile("Snapshot not found"),
 	}))
 }
 

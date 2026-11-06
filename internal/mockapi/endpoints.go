@@ -66,7 +66,7 @@ var Endpoints = []Endpoint{
 	{"POST", "/api/v1/servers/{serverId}/storageoptimization", "netcup_server_storage_optimization"},
 	{"POST", "/api/v1/servers/{serverId}/user-image", "netcup_server_user_image_setup"},
 	{"GET", "/api/v1/tasks", "netcup_tasks"},
-	{"GET", "/api/v1/tasks/{uuid}", "internal task polling"},
+	{"GET", "/api/v1/tasks/{uuid}", "netcup_task, internal task polling"},
 	{"PUT", "/api/v1/tasks/{uuid}:cancel", "netcup_task_cancel"},
 	{"GET", "/api/v1/users/{userId}", "netcup_user"},
 	{"PUT", "/api/v1/users/{userId}", "netcup_user"},

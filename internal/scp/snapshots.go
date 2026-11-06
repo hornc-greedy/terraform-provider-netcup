@@ -17,6 +17,9 @@ type Snapshot struct {
 	CreationTime string   `json:"creationTime"`
 	State        string   `json:"state"`
 	Online       bool     `json:"online"`
+
+	Exported          *bool  `json:"exported"`
+	ExportedSizeInKiB *int64 `json:"exportedSizeInKiB"`
 }
 
 // snapshotCreate is the body of POST .../snapshots.
