@@ -218,7 +218,7 @@ variables. Each test is skipped unless all of its variables are set.
 | the token and `NETCUP_TEST_SERVER_ID` | actions | the server is shut down and started, its firewall is applied again and its copied firewall policies are restored, netcup is asked to cancel a finished task, which it ignores, the storage is optimized, an offline snapshot is taken and reverted, the disk is formatted and Debian is installed, **all data of the server is lost** |
 | the token, the server, `NETCUP_TEST_SNAPSHOT_EXPORT=1` | snapshot export | uses the one export netcup includes per server, further ones cost money |
 | the token, the server, `NETCUP_TEST_USER_IMAGE` | user image setup | the image file is uploaded and installed on the server |
-| the token, the server, `NETCUP_TEST_RDNS_IP`, `NETCUP_TEST_RDNS_DOMAIN` | reverse DNS | the PTR of the given IP, which must belong to the server, is set, changed and deleted |
+| the token, the server, `NETCUP_TEST_RDNS_DOMAIN` and `NETCUP_TEST_RDNS_IPV4` or `NETCUP_TEST_RDNS_IPV6` | reverse DNS | the PTR of each given IP, which must belong to the server, is set, changed and deleted |
 | the token, the server, `NETCUP_TEST_FAILOVER_IP_ID` | failover route | the unrouted IPv4 failover IP stays routed to the server |
 | `NETCUP_TEST_CLOUDDNS_API_KEY` | CloudDNS data sources | none, they only read |
 | `NETCUP_TEST_CLOUDDNS_API_KEY`, `NETCUP_TEST_CLOUDDNS_DOMAIN` | CloudDNS records, ACME challenges | a record is created, its TTL changed and it is deleted, a challenge is created and deleted |

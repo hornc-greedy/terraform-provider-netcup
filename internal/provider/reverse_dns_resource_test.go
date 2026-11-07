@@ -5,6 +5,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"os"
 	"strconv"
 	"testing"
@@ -13,38 +14,45 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
-// Destroying the resource deletes the PTR of NETCUP_TEST_RDNS_IP, which must
-// belong to NETCUP_TEST_SERVER_ID.
+// The test sets the PTR of NETCUP_TEST_RDNS_IPV4 and of NETCUP_TEST_RDNS_IPV6,
+// which must belong to NETCUP_TEST_SERVER_ID, and deletes it afterwards.
 func TestAccReverseDNSResource(t *testing.T) {
 	serverID := testAccLiveServerID(t)
-	ip := os.Getenv("NETCUP_TEST_RDNS_IP")
 	domain := os.Getenv("NETCUP_TEST_RDNS_DOMAIN")
-	if ip == "" || domain == "" {
-		t.Skip("NETCUP_TEST_RDNS_IP or NETCUP_TEST_RDNS_DOMAIN not set")
+	if domain == "" {
+		t.Skip("NETCUP_TEST_RDNS_DOMAIN not set")
 	}
-	testAccRequireServerIP(t, serverID, ip)
-	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckReverseDNSDestroy("tf-acc-test-2." + domain),
-		Steps: []resource.TestStep{
-			{ // create
-				Config: testAccReverseDNSConfig(ip, "tf-acc-test-1."+domain),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("netcup_reverse_dns.test", "id", ip),
-					resource.TestCheckResourceAttr("netcup_reverse_dns.test", "hostname", "tf-acc-test-1."+domain),
-				),
-			},
-			{ // update in place
-				Config: testAccReverseDNSConfig(ip, "tf-acc-test-2."+domain),
-				Check:  resource.TestCheckResourceAttr("netcup_reverse_dns.test", "hostname", "tf-acc-test-2."+domain),
-			},
-			{ // import (ip)
-				ResourceName:      "netcup_reverse_dns.test",
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
-	})
+	for _, variable := range []string{"NETCUP_TEST_RDNS_IPV4", "NETCUP_TEST_RDNS_IPV6"} {
+		t.Run(variable, func(t *testing.T) {
+			ip := os.Getenv(variable)
+			if ip == "" {
+				t.Skipf("%s not set", variable)
+			}
+			testAccRequireServerIP(t, serverID, ip)
+			resource.Test(t, resource.TestCase{
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				CheckDestroy:             testAccCheckReverseDNSDestroy("tf-acc-test-2." + domain),
+				Steps: []resource.TestStep{
+					{ // create
+						Config: testAccReverseDNSConfig(ip, "tf-acc-test-1."+domain),
+						Check: resource.ComposeAggregateTestCheckFunc(
+							resource.TestCheckResourceAttr("netcup_reverse_dns.test", "id", ip),
+							resource.TestCheckResourceAttr("netcup_reverse_dns.test", "hostname", "tf-acc-test-1."+domain),
+						),
+					},
+					{ // update in place
+						Config: testAccReverseDNSConfig(ip, "tf-acc-test-2."+domain),
+						Check:  resource.TestCheckResourceAttr("netcup_reverse_dns.test", "hostname", "tf-acc-test-2."+domain),
+					},
+					{ // import (ip)
+						ResourceName:      "netcup_reverse_dns.test",
+						ImportState:       true,
+						ImportStateVerify: true,
+					},
+				},
+			})
+		})
+	}
 }
 
 func testAccCheckReverseDNSDestroy(hostname string) resource.TestCheckFunc {
@@ -75,10 +83,15 @@ resource "netcup_reverse_dns" "test" {
 `, ip, hostname)
 }
 
-// testAccRequireServerIP fails unless ip is an IPv4 address of the server.
+// testAccRequireServerIP fails unless ip is an IPv4 address of the server or lies
+// in one of its IPv6 networks.
 func testAccRequireServerIP(t *testing.T, serverID, ip string) {
 	t.Helper()
 	id, err := strconv.Atoi(serverID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr, err := netip.ParseAddr(ip)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,6 +105,11 @@ func testAccRequireServerIP(t *testing.T, serverID, ip string) {
 				return
 			}
 		}
+		for _, a := range i.IPv6Addresses {
+			if network, err := netip.ParsePrefix(a.CIDR); err == nil && !a.LinkLocal && network.Contains(addr) {
+				return
+			}
+		}
 	}
-	t.Fatalf("%s is no IPv4 address of server %s", ip, serverID)
+	t.Fatalf("%s is no address of server %s", ip, serverID)
 }
