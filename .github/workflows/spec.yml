@@ -1,0 +1,85 @@
+name: API specifications
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  compare:
+    name: Compare with the published specifications
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download specifications
+        run: |
+          curl -fsSL -o internal/mockapi/spec/scp.json https://www.servercontrolpanel.de/scp-core/api/v1/openapi
+          curl -fsSL -o internal/mockapi/spec/netcup.json https://api.netcup.com/v1/openapi.json
+      - name: Compare
+        id: compare
+        run: |
+          if git diff --quiet internal/mockapi/spec; then
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >>"$GITHUB_OUTPUT"
+          fi
+      - name: Endpoint table
+        id: unit
+        if: steps.compare.outputs.changed == 'true'
+        continue-on-error: true
+        run: go test ./internal/mockapi
+      - name: Acceptance tests (mock API)
+        id: mock
+        if: steps.compare.outputs.changed == 'true'
+        continue-on-error: true
+        run: make testmock
+      - name: Report
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          UNIT: ${{ steps.unit.outcome }}
+          MOCK: ${{ steps.mock.outcome }}
+        run: |
+          operations() {
+            jq -r '.paths | to_entries[] | .key as $path | .value | to_entries[]
+              | select(.key | test("^(get|put|post|patch|delete)$"))
+              | "\(.key | ascii_upcase) \($path)\(if .value.deprecated then " (deprecated)" else "" end)"' "$1" | sort
+          }
+          {
+            for name in scp netcup; do
+              file=internal/mockapi/spec/$name.json
+              git show "HEAD:$file" >"old-$name.json"
+              echo "### $name.json"
+              echo
+              echo "Version $(jq -r .info.version "old-$name.json") to $(jq -r .info.version "$file")"
+              echo
+              diff <(operations "old-$name.json") <(operations "$file") | sed -n 's/^< /- removed: /p; s/^> /- added: /p'
+              echo
+            done
+            echo "Endpoint table: $UNIT, acceptance tests (mock API): $MOCK"
+            echo
+            echo "$RUN_URL"
+          } >report.md
+          title="API specification changed"
+          number=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$number" ]; then
+            gh issue view "$number" --json body,comments --jq '(.comments | last | .body) // .body' >last.md
+            # The last two lines hold the run link, which differs on every run.
+            if ! diff -q <(head -n -2 last.md) <(head -n -2 report.md) >/dev/null; then
+              gh issue comment "$number" --body-file report.md
+            fi
+          else
+            gh issue create --title "$title" --body-file report.md
+          fi
+      - name: Fail on broken tests
+        if: steps.unit.outcome == 'failure' || steps.mock.outcome == 'failure'
+        run: exit 1
