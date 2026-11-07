@@ -13,6 +13,7 @@ import (
 	fwprov "github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	"github.com/hashicorp/terraform-plugin-testing/echoprovider"
 
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/scp"
 )
@@ -20,6 +21,13 @@ import (
 // testAccProtoV6ProviderFactories provides the in-process provider to a test.
 var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
 	"netcup": providerserver.NewProtocol6WithError(New("test")()),
+}
+
+// testAccEchoProviderFactories adds the echo provider, the official way to read an
+// ephemeral value in a test.
+var testAccEchoProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
+	"netcup": testAccProtoV6ProviderFactories["netcup"],
+	"echo":   echoprovider.NewProviderServer(),
 }
 
 // testAccPreCheckCCP skips the test unless credentials and a domain explicitly

@@ -213,6 +213,7 @@ variables. Each test is skipped unless all of its variables are set.
 | the token | account data sources | none, they only read |
 | the token and `NETCUP_TEST_SERVER_ID` | server data sources | none, they only read |
 | the token and `NETCUP_TEST_SERVER_ID` | server | an offline snapshot of `vda` restarts the server, policies are assigned to the first interface and removed again, nickname and autostart are set |
+| the token and `NETCUP_TEST_SERVER_ID` | rescue system, ISO, disk driver, root password | the server restarts into the rescue system and back, an ISO is attached and detached, the disk driver changes and changes back, the server is shut down, gets a random root password nobody learns and starts again |
 | the token, the server, `NETCUP_TEST_RDNS_IP`, `NETCUP_TEST_RDNS_DOMAIN` | reverse DNS | the PTR of the given IP, which must belong to the server, is set, changed and deleted |
 | the token, the server, `NETCUP_TEST_FAILOVER_IP_ID` | failover route | the unrouted IPv4 failover IP stays routed to the server |
 | `NETCUP_TEST_CLOUDDNS_API_KEY` | CloudDNS data sources | none, they only read |
