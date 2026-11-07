@@ -149,6 +149,9 @@ and need Terraform 1.14 or newer. OpenTofu does not support actions, see
   not implemented.
 - A domain has either the **DNS** tab in the CCP and uses the `netcup_dns_*`
   objects, or the **CloudDNS** tab and uses the `netcup_clouddns_*` objects.
+- The CCP API can report a domain on CloudDNS as an empty zone. See the
+  [migration guide](docs/guides/migrate-to-clouddns.md) before applying a plan
+  that creates its records again.
 - These assumptions of the `netcup_clouddns_*` objects are not in the
   specification:
   - netcup marks the served revision with the state `active`.
