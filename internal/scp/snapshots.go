@@ -18,8 +18,9 @@ type Snapshot struct {
 	State        string   `json:"state"`
 	Online       bool     `json:"online"`
 
-	Exported          *bool  `json:"exported"`
-	ExportedSizeInKiB *int64 `json:"exportedSizeInKiB"`
+	Exported          *bool            `json:"exported"`
+	ExportedSizeInKiB *int64           `json:"exportedSizeInKiB"`
+	DownloadInfos     *S3DownloadInfos `json:"downloadInfos"`
 }
 
 // snapshotCreate is the body of POST .../snapshots.

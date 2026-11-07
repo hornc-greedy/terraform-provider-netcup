@@ -7,6 +7,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
+	ephemeralschema "github.com/hashicorp/terraform-plugin-framework/ephemeral/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/scp"
@@ -156,7 +158,7 @@ func (d *serverSnapshotDataSource) Metadata(_ context.Context, req datasource.Me
 
 func (d *serverSnapshotDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "One snapshot of a netcup server (SCP REST API).",
+		MarkdownDescription: "One snapshot of a netcup server (SCP REST API). `netcup_server_snapshot_download` has the download of an exported one.",
 		Attributes: map[string]schema.Attribute{
 			"server_id":            serverIDAttribute(),
 			"name":                 schema.StringAttribute{Required: true, MarkdownDescription: "Name of the snapshot."},
@@ -204,6 +206,79 @@ func (d *serverSnapshotDataSource) Read(ctx context.Context, req datasource.Read
 	cfg.Online, cfg.Exported = types.BoolValue(snapshot.Online), types.BoolPointerValue(snapshot.Exported)
 	cfg.ExportedSize = types.Int64PointerValue(snapshot.ExportedSizeInKiB)
 	resp.Diagnostics.Append(resp.State.Set(ctx, cfg)...)
+}
+
+// serverSnapshotDownloadEphemeralResource reads the download of an export. Its
+// URL grants access while valid, so it stays out of plan and state.
+type serverSnapshotDownloadEphemeralResource struct {
+	client *scp.Client
+}
+
+var _ ephemeral.EphemeralResourceWithConfigure = (*serverSnapshotDownloadEphemeralResource)(nil)
+
+// NewServerSnapshotDownloadEphemeralResource is the ephemeral resource factory.
+func NewServerSnapshotDownloadEphemeralResource() ephemeral.EphemeralResource {
+	return &serverSnapshotDownloadEphemeralResource{}
+}
+
+func (r *serverSnapshotDownloadEphemeralResource) Metadata(_ context.Context, req ephemeral.MetadataRequest, resp *ephemeral.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_server_snapshot_download"
+}
+
+func (r *serverSnapshotDownloadEphemeralResource) Schema(_ context.Context, _ ephemeral.SchemaRequest, resp *ephemeral.SchemaResponse) {
+	resp.Schema = ephemeralschema.Schema{
+		MarkdownDescription: "The download of a snapshot that `netcup_server_snapshot_export` exported (SCP REST API). It needs Terraform 1.10 or newer.",
+		Attributes: map[string]ephemeralschema.Attribute{
+			"server_id":     ephemeralschema.Int64Attribute{Required: true, MarkdownDescription: "Id of the server."},
+			"name":          ephemeralschema.StringAttribute{Required: true, MarkdownDescription: "Name of the snapshot."},
+			"filename":      ephemeralschema.StringAttribute{Computed: true, MarkdownDescription: "Name of the file."},
+			"presigned_url": ephemeralschema.StringAttribute{Computed: true, Sensitive: true, MarkdownDescription: "Download URL."},
+			"presigned_url_validity_duration_in_hours": ephemeralschema.Int64Attribute{Computed: true, MarkdownDescription: "Validity of the URL in hours."},
+			"headers": ephemeralschema.MapAttribute{
+				Computed:            true,
+				Sensitive:           true,
+				ElementType:         types.ListType{ElemType: types.StringType},
+				MarkdownDescription: "Headers to send with the download.",
+			},
+		},
+	}
+}
+
+func (r *serverSnapshotDownloadEphemeralResource) Configure(_ context.Context, req ephemeral.ConfigureRequest, resp *ephemeral.ConfigureResponse) {
+	data := providerDataFrom(req.ProviderData, &resp.Diagnostics)
+	if data == nil {
+		return
+	}
+	r.client = requireSCP(data, &resp.Diagnostics)
+}
+
+func (r *serverSnapshotDownloadEphemeralResource) Open(ctx context.Context, req ephemeral.OpenRequest, resp *ephemeral.OpenResponse) {
+	var cfg struct {
+		ServerID types.Int64         `tfsdk:"server_id"`
+		Name     types.String        `tfsdk:"name"`
+		Filename types.String        `tfsdk:"filename"`
+		URL      types.String        `tfsdk:"presigned_url"`
+		Validity types.Int64         `tfsdk:"presigned_url_validity_duration_in_hours"`
+		Headers  map[string][]string `tfsdk:"headers"`
+	}
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfg)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	snapshot, err := r.client.GetSnapshot(ctx, int(cfg.ServerID.ValueInt64()), cfg.Name.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Error reading snapshot", err.Error())
+		return
+	}
+	if snapshot == nil || snapshot.DownloadInfos == nil {
+		resp.Diagnostics.AddError("Snapshot has no download", "The server has no exported snapshot "+cfg.Name.ValueString()+".")
+		return
+	}
+	cfg.Filename = optString(snapshot.DownloadInfos.Filename)
+	cfg.URL = types.StringValue(snapshot.DownloadInfos.PresignedURL)
+	cfg.Validity = types.Int64PointerValue(snapshot.DownloadInfos.PresignedURLValidityDurationInHours)
+	cfg.Headers = snapshot.DownloadInfos.Headers
+	resp.Diagnostics.Append(resp.Result.Set(ctx, cfg)...)
 }
 
 // serverIsoDataSource reads the ISO of a server without managing it.

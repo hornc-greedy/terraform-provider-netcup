@@ -892,7 +892,16 @@ func (s *Server) getSnapshot(c *call) (int, any) {
 	if !ok {
 		return notFound()
 	}
-	return http.StatusOK, snap
+	if !snap.Exported {
+		return http.StatusOK, snap
+	}
+	return http.StatusOK, struct {
+		*snapshot
+		DownloadInfos map[string]any `json:"downloadInfos"`
+	}{snap, map[string]any{
+		"filename": snap.Name + ".qcow2", "presignedUrl": s.URL + s3Prefix + snap.Name + "?signature=mock",
+		"presignedUrlValidityDurationInHours": 1, "headers": map[string][]string{},
+	}}
 }
 
 func (s *Server) deleteSnapshot(c *call) (int, any) {

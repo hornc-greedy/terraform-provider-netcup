@@ -58,7 +58,7 @@ var Endpoints = []Endpoint{
 	{"DELETE", "/api/v1/servers/{serverId}/rescuesystem", "netcup_server_rescue_system"},
 	{"GET", "/api/v1/servers/{serverId}/snapshots", "netcup_server_snapshots"},
 	{"POST", "/api/v1/servers/{serverId}/snapshots", "netcup_server_snapshot"},
-	{"GET", "/api/v1/servers/{serverId}/snapshots/{name}", "netcup_server_snapshot"},
+	{"GET", "/api/v1/servers/{serverId}/snapshots/{name}", "netcup_server_snapshot, netcup_server_snapshot_download"},
 	{"DELETE", "/api/v1/servers/{serverId}/snapshots/{name}", "netcup_server_snapshot"},
 	{"POST", "/api/v1/servers/{serverId}/snapshots/{name}/export", "netcup_server_snapshot_export"},
 	{"POST", "/api/v1/servers/{serverId}/snapshots/{name}/revert", "netcup_server_snapshot_revert"},

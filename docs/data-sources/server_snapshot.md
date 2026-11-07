@@ -3,12 +3,12 @@
 page_title: "netcup_server_snapshot Data Source - netcup"
 subcategory: ""
 description: |-
-  One snapshot of a netcup server (SCP REST API).
+  One snapshot of a netcup server (SCP REST API). netcup_server_snapshot_download has the download of an exported one.
 ---
 
 # netcup_server_snapshot (Data Source)
 
-One snapshot of a netcup server (SCP REST API).
+One snapshot of a netcup server (SCP REST API). `netcup_server_snapshot_download` has the download of an exported one.
 
 ## Example Usage
 

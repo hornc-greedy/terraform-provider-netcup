@@ -106,7 +106,7 @@ The refresh token stays valid as long as it is used at least once every 30 days.
 | Images, ISO and rescue | `netcup_server_iso`, `netcup_server_rescue_system` | `netcup_server_iso`, `netcup_server_image_flavours`, `netcup_server_iso_images` | `netcup_server_rescue_system`, `netcup_server_gpu_driver` | `netcup_server_image_setup`, `netcup_server_user_image_setup` |
 | Interfaces and reverse DNS | `netcup_server_interface`, `netcup_reverse_dns` | `netcup_server_interface`, `netcup_reverse_dns`, `netcup_server_interfaces` |  |  |
 | Metrics and logs |  | `netcup_server_metrics_cpu`, `netcup_server_metrics_disk`, `netcup_server_metrics_network`, `netcup_server_metrics_network_packet`, `netcup_server_logs` |  |  |
-| Snapshots | `netcup_server_snapshot` | `netcup_server_snapshot`, `netcup_server_snapshots`, `netcup_server_snapshot_dryrun` |  | `netcup_server_snapshot_revert`, `netcup_server_snapshot_export` |
+| Snapshots | `netcup_server_snapshot` | `netcup_server_snapshot`, `netcup_server_snapshots`, `netcup_server_snapshot_dryrun` | `netcup_server_snapshot_download` | `netcup_server_snapshot_revert`, `netcup_server_snapshot_export` |
 | Firewall | `netcup_firewall_policy`, `netcup_server_firewall` | `netcup_server_firewall`, `netcup_firewall_policies` |  | `netcup_server_firewall_reapply`, `netcup_server_firewall_restore_copied_policies` |
 | Failover IPs | `netcup_failover_ip_route` | `netcup_failover_ips` |  |  |
 | VLANs | `netcup_user_vlan` | `netcup_user_vlan`, `netcup_vlan`, `netcup_user_vlans` |  |  |

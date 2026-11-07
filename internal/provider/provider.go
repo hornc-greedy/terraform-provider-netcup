@@ -235,6 +235,7 @@ func (p *netcupProvider) DataSources(_ context.Context) []func() datasource.Data
 func (p *netcupProvider) EphemeralResources(_ context.Context) []func() ephemeral.EphemeralResource {
 	return []func() ephemeral.EphemeralResource{
 		NewServerGPUDriverEphemeralResource,
+		NewServerSnapshotDownloadEphemeralResource,
 		NewUserImageDownloadEphemeralResource,
 		NewUserIsoDownloadEphemeralResource,
 		NewServerRescueSystemEphemeralResource,

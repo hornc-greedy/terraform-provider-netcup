@@ -2685,6 +2685,65 @@ data "netcup_server_snapshot" "test" {
 	}))
 }
 
+func TestMockServerSnapshotDownload(t *testing.T) {
+	m := mockapi.New(t)
+	m.AddSnapshot("s")
+	m.MarkSnapshotExported("s", 42)
+	resource.Test(t, resource.TestCase{
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_10_0)},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
+			"netcup": testAccProtoV6ProviderFactories["netcup"],
+			"echo":   echoprovider.NewProviderServer(),
+		},
+		Steps: []resource.TestStep{{
+			Config: testMockConfig(m, fmt.Sprintf(`
+ephemeral "netcup_server_snapshot_download" "test" {
+  server_id = %d
+  name      = "s"
+}
+
+provider "echo" {
+  data = ephemeral.netcup_server_snapshot_download.test
+}
+
+resource "echo" "test" {}
+`, mockapi.DefaultServerID)),
+			ConfigStateChecks: []statecheck.StateCheck{
+				statecheck.ExpectKnownValue("echo.test", tfjsonpath.New("data").AtMapKey("filename"), knownvalue.StringExact("s.qcow2")),
+				statecheck.ExpectKnownValue("echo.test", tfjsonpath.New("data").AtMapKey("presigned_url_validity_duration_in_hours"), knownvalue.Int64Exact(1)),
+				statecheck.ExpectKnownValue("echo.test", tfjsonpath.New("data").AtMapKey("presigned_url"), knownvalue.StringRegexp(regexp.MustCompile("signature=mock"))),
+			},
+		}},
+	})
+}
+
+func TestMockServerSnapshotDownloadWithoutExportFails(t *testing.T) {
+	m := mockapi.New(t)
+	m.AddSnapshot("s")
+	resource.Test(t, resource.TestCase{
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_10_0)},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
+			"netcup": testAccProtoV6ProviderFactories["netcup"],
+			"echo":   echoprovider.NewProviderServer(),
+		},
+		Steps: []resource.TestStep{{
+			Config: testMockConfig(m, fmt.Sprintf(`
+ephemeral "netcup_server_snapshot_download" "test" {
+  server_id = %d
+  name      = "s"
+}
+
+provider "echo" {
+  data = ephemeral.netcup_server_snapshot_download.test
+}
+
+resource "echo" "test" {}
+`, mockapi.DefaultServerID)),
+			ExpectError: regexp.MustCompile("no exported snapshot"),
+		}},
+	})
+}
+
 func TestMockProviderRejectsUnknownAttribute(t *testing.T) {
 	for attribute, object := range map[string]string{
 		"scp_refresh_token": `data "netcup_servers" "test" {}`,
