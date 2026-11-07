@@ -17,6 +17,26 @@ domains on CloudDNS and servers:
 - **SCP REST API** (OAuth 2.0) for servers and the objects around them, see
   [Objects](#objects)
 
+## Highlights
+
+- **CCP DNS and CloudDNS:** domains on both are supported, and the
+  [migration guide](docs/guides/migrate-to-clouddns.md) moves a domain to
+  CloudDNS without recreating its records.
+- **The whole SCP REST API:** every operation that manages something maps to a
+  resource, data source, ephemeral resource or action, see the
+  [API coverage guide](docs/guides/api-coverage.md).
+- **Actions and secrets:** one-off operations such as reinstalling or reverting
+  a snapshot are Terraform actions. Passwords are write-only attributes, and the
+  rescue password and download links come from ephemeral resources, so secrets
+  stay out of state.
+- **Uploads:** `netcup_user_image` and `netcup_user_iso` upload files in parts
+  and replace them when `source_hash` changes.
+- **Tested:** real Terraform runs against a mock that checks SCP and netcup API
+  requests and responses against netcup's OpenAPI specifications, and v1.2.0
+  passed live tests on a netcup VPS. Where netcup behaves differently than
+  documented, the provider follows netcup, for example it shuts a server down
+  to activate the rescue system.
+
 ## Requirements
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
@@ -30,7 +50,7 @@ terraform {
   required_providers {
     netcup = {
       source  = "hornc-greedy/netcup"
-      version = "~> 1.1"
+      version = "~> 1.2"
     }
   }
 }
@@ -210,6 +230,15 @@ variables. Each test is skipped unless all of its variables are set.
 | `NETCUP_TEST_CLOUDDNS_API_KEY` | CloudDNS data sources | none, they only read |
 | `NETCUP_TEST_CLOUDDNS_API_KEY`, `NETCUP_TEST_CLOUDDNS_DOMAIN` | CloudDNS records, ACME challenges | a record is created, its TTL changed and it is deleted, a challenge is created and deleted |
 | `NETCUP_TEST_CUSTOMER_NUMBER`, `NETCUP_TEST_API_KEY`, `NETCUP_TEST_API_PASSWORD`, `NETCUP_TEST_DOMAIN` | CCP DNS | a record is created, changed and deleted, the zone TTL is set to 3600, then to 86400 and stays there |
+
+v1.2.0 passed these tests against a netcup VPS in an account of its own, also
+with `NETCUP_TEST_SNAPSHOT_EXPORT=1` and a user image. These objects ran against
+the mock alone:
+
+- the failover route, `netcup_vlan`, `netcup_user_vlan`, `netcup_server_interface`
+  and the GPU driver, which need a failover IP, a VLAN or a GPU server
+- the `netcup_clouddns_*` objects other than `netcup_clouddns_domains` and
+  `netcup_clouddns_record_types`, which need a domain on CloudDNS
 
 ### Trying a local build
 

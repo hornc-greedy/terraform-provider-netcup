@@ -16,7 +16,7 @@ terraform {
   required_providers {
     netcup = {
       source  = "hornc-greedy/netcup"
-      version = "~> 1.1"
+      version = "~> 1.2"
     }
   }
 }
