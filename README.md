@@ -215,6 +215,9 @@ variables. Each test is skipped unless all of its variables are set.
 | the token and `NETCUP_TEST_SERVER_ID` | server | an offline snapshot of `vda` restarts the server, policies are assigned to the first interface and removed again, nickname and autostart are set |
 | the token and `NETCUP_TEST_SERVER_ID` | rescue system, ISO, disk driver, root password | the server restarts into the rescue system and back, an ISO is attached and detached, the disk driver changes and changes back, the server is shut down, gets a random root password nobody learns and starts again |
 | the token | user, uploaded images and ISOs | language, time zone and `show_nickname` of the user change and its API IP login restrictions are cleared, small files are uploaded, replaced and deleted, a download link is fetched |
+| the token and `NETCUP_TEST_SERVER_ID` | actions | the server is shut down and started, its firewall is applied again and its copied firewall policies are restored, netcup is asked to cancel a finished task, which it ignores, the storage is optimized, an offline snapshot is taken and reverted, the disk is formatted and Debian is installed, **all data of the server is lost** |
+| the token, the server, `NETCUP_TEST_SNAPSHOT_EXPORT=1` | snapshot export | uses the one export netcup includes per server, further ones cost money |
+| the token, the server, `NETCUP_TEST_USER_IMAGE` | user image setup | the image file is uploaded and installed on the server |
 | the token, the server, `NETCUP_TEST_RDNS_IP`, `NETCUP_TEST_RDNS_DOMAIN` | reverse DNS | the PTR of the given IP, which must belong to the server, is set, changed and deleted |
 | the token, the server, `NETCUP_TEST_FAILOVER_IP_ID` | failover route | the unrouted IPv4 failover IP stays routed to the server |
 | `NETCUP_TEST_CLOUDDNS_API_KEY` | CloudDNS data sources | none, they only read |
