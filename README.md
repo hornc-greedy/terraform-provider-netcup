@@ -79,21 +79,8 @@ Create the CCP API key and API password in the CCP under **Master Data > API**.
 The API password is not your login password. The API key of the netcup API for
 CloudDNS is created on the same page.
 
-The SCP REST API needs an offline refresh token, obtained once via the OIDC
-device flow:
-
-```bash
-# 1. Request a device code, then open verification_uri_complete in a browser:
-curl -s -X POST 'https://www.servercontrolpanel.de/realms/scp/protocol/openid-connect/auth/device' \
-  -d 'client_id=scp' -d 'scope=offline_access openid'
-
-# 2. After approving in the browser, exchange the device_code for tokens:
-curl -s -X POST 'https://www.servercontrolpanel.de/realms/scp/protocol/openid-connect/token' \
-  -d 'grant_type=urn:ietf:params:oauth:grant-type:device_code' \
-  -d 'device_code=<device-code>' -d 'client_id=scp'
-```
-
-The refresh token stays valid as long as it is used at least once every 30 days.
+The SCP REST API needs an offline refresh token, see the
+[SCP authentication guide](docs/guides/scp-authentication.md).
 
 ### Objects
 
