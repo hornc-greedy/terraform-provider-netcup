@@ -139,3 +139,4 @@ These operations manage nothing, or form a draft workflow that a single record r
 - `POST /v1/domain/{domainId}/dns/revision/{revisionId}/commit`
 - `POST /v1/domain/{domainId}/dns/revision/{revisionId}/record`
 - `DELETE /v1/domain/{domainId}/dns/revision/{revisionId}/record/{recordId}`
+- `GET /v1/openapi.json`

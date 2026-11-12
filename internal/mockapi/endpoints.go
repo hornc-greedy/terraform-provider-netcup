@@ -116,4 +116,5 @@ var Endpoints = []Endpoint{
 	{"POST", "/v1/domain/{domainId}/dns/revision/{revisionId}/record", ""},
 	{"GET", "/v1/domain/{domainId}/dns/revision/{revisionId}/record/{recordId}", "netcup_clouddns_record"},
 	{"DELETE", "/v1/domain/{domainId}/dns/revision/{revisionId}/record/{recordId}", ""},
+	{"GET", "/v1/openapi.json", ""},
 }
