@@ -22,13 +22,25 @@ import (
 	"github.com/hornc-greedy/terraform-provider-netcup/internal/scp"
 )
 
-// The patterns of ServerImageSetup and ServerUserImageSetup. RE2 lacks the
+// The patterns of ServerImageSetup and UserSave.timeZone. RE2 lacks the
 // lookahead of the hostname, so the length has its own validator.
 var (
 	hostnamePattern = regexp.MustCompile(`^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])(\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]))*$`)
 	usernamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,30}$`)
 	nonBlankPattern = regexp.MustCompile(`\S`)
 )
+
+// fileNamePattern is the pattern of ServerUserImageSetup.userImageName and
+// ServerSnapshotCreate.name. RE2 lacks its lookahead, so fileNameValidators
+// rejects "." and ".." on its own.
+var fileNamePattern = regexp.MustCompile(`^[^/\\[:cntrl:]]+$`)
+
+func fileNameValidators() []validator.String {
+	return []validator.String{
+		stringvalidator.RegexMatches(fileNamePattern, `must not contain /, \ or control characters`),
+		stringvalidator.NoneOf(".", ".."),
+	}
+}
 
 // defaultActionTimeout bounds an action without a timeouts attribute.
 const defaultActionTimeout = 60 * time.Minute
@@ -228,7 +240,7 @@ func NewServerUserImageSetupAction() action.Action {
 			"server_id": actionServerID(),
 			"user_image_name": schema.StringAttribute{
 				Required: true, MarkdownDescription: "Name of the uploaded image.",
-				Validators: []validator.String{stringvalidator.RegexMatches(nonBlankPattern, "must not be blank")},
+				Validators: fileNameValidators(),
 			},
 			"disk_name":          schema.StringAttribute{Optional: true, MarkdownDescription: "Name of the disk, e.g. `vda`."},
 			"email_notification": schema.BoolAttribute{Optional: true, MarkdownDescription: "Whether netcup sends an e-mail when it is done."},

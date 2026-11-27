@@ -68,6 +68,7 @@ func (r *serverSnapshotResource) Schema(ctx context.Context, _ resource.SchemaRe
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Snapshot name.",
+				Validators:          fileNameValidators(),
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"description": schema.StringAttribute{
