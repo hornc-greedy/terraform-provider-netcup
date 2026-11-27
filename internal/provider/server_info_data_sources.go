@@ -36,8 +36,8 @@ func serverIDAttribute() schema.Int64Attribute {
 func pageAttributes(attributes map[string]schema.Attribute) map[string]schema.Attribute {
 	attributes["limit"] = schema.Int64Attribute{
 		Optional:            true,
-		MarkdownDescription: "Maximum number of entries. Reads all entries if unset.",
-		Validators:          []validator.Int64{int64validator.AtLeast(1)},
+		MarkdownDescription: "Maximum number of entries, at most 200. Reads all entries if unset.",
+		Validators:          []validator.Int64{int64validator.Between(1, 200)},
 	}
 	attributes["offset"] = schema.Int64Attribute{
 		Optional:            true,

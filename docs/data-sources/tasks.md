@@ -23,7 +23,7 @@ data "netcup_tasks" "running" {
 
 ### Optional
 
-- `limit` (Number) Maximum number of entries. Reads all entries if unset.
+- `limit` (Number) Maximum number of entries, at most 200. Reads all entries if unset.
 - `offset` (Number) Number of entries to skip.
 - `q` (String) Search term.
 - `server_id` (Number) Only tasks of this server.

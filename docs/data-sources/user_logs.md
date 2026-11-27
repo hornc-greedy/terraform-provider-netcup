@@ -23,7 +23,7 @@ data "netcup_user_logs" "example" {
 
 ### Optional
 
-- `limit` (Number) Maximum number of entries. Reads all entries if unset.
+- `limit` (Number) Maximum number of entries, at most 200. Reads all entries if unset.
 - `offset` (Number) Number of entries to skip.
 
 ### Read-Only
