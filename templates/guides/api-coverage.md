@@ -131,6 +131,7 @@ provider.
 These operations manage nothing, or form a draft workflow that a single record resource does not use:
 
 - `GET /api/ping`
+- `GET /api/v1/encryption-keys`
 - `GET /api/v1/openapi`
 - `POST /api/v1/openapi/mcp`
 - `POST /v1/domain/{domainId}/dns/revision`

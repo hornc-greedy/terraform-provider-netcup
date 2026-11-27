@@ -13,6 +13,7 @@ type Endpoint struct {
 // Endpoints lists every operation of the specifications in spec/.
 var Endpoints = []Endpoint{
 	{"GET", "/api/ping", ""},
+	{"GET", "/api/v1/encryption-keys", ""},
 	{"GET", "/api/v1/maintenance", "netcup_maintenance"},
 	{"GET", "/api/v1/openapi", ""},
 	{"POST", "/api/v1/openapi/mcp", ""},
