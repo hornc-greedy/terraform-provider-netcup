@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1 (November 27, 2026)
+
+BUG FIXES:
+
+* action/netcup_server_user_image_setup, resource/netcup_server_snapshot: A name of `.` or `..`, or with `/`, `\` or control characters, reached the SCP API, which now rejects it. The provider now rejects it during plan.
+* data-source/netcup_server_logs, data-source/netcup_tasks, data-source/netcup_user_logs: `limit` above 200 reached the SCP API, which now accepts at most 200. The provider now rejects it during plan.
+
 ## 1.2.0 (November 7, 2026)
 
 NOTES:
